@@ -233,3 +233,13 @@ def test_rejects_blank_card_fields():
                 ],
             }
         )
+
+
+def test_stops_retrying_in_time_for_the_backend():
+    stop = assistant.complete.retry.stop
+    state = lambda attempt, elapsed: SimpleNamespace(  # noqa: E731
+        attempt_number=attempt, seconds_since_start=elapsed, outcome=None
+    )
+    assert not stop(state(2, 30))
+    assert stop(state(2, 101))
+    assert stop(state(5, 10))

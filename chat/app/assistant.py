@@ -7,6 +7,7 @@ from tenacity import (
     retry,
     retry_if_exception,
     stop_after_attempt,
+    stop_after_delay,
     wait_exponential_jitter,
 )
 
@@ -104,10 +105,12 @@ def parse_reply(content: str | None) -> tuple[str, list[Any]]:
     return reply.strip(), actions
 
 
+# Five attempts, but none started after 100 s, so with the 45 s request
+# timeout an answer always comes back inside the backend's 180 s limit.
 @retry(
     retry=retry_if_exception(is_retryable),
     wait=wait_exponential_jitter(initial=1, max=20),
-    stop=stop_after_attempt(5),
+    stop=stop_after_attempt(5) | stop_after_delay(100),
     reraise=True,
 )
 async def complete(messages: list[dict[str, str]]) -> tuple[str, list[Any]]:
@@ -116,7 +119,7 @@ async def complete(messages: list[dict[str, str]]) -> tuple[str, list[Any]]:
             model=MODEL,
             messages=messages,
             response_format={"type": "json_object"},
-            timeout=60,
+            timeout=45,
             num_retries=0,
         )
     except (litellm.AuthenticationError, litellm.BadRequestError) as error:

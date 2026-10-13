@@ -153,7 +153,7 @@ From the project root:
 - `npm run build` then `npm start` builds the frontend and serves the whole app from the backend on port 4000, with the chat service on 8000
 - `npm test`, `npm run lint` and `npm run test:e2e` run the checks for all three packages (pytest and ruff for `chat/`)
 
-Inside `backend/` or `frontend/`, `npm test`, `npm run lint` and `npm run format` work per package. `frontend/`'s `npm run test:e2e` builds the frontend and starts the backend on port 3100 with a throwaway database, the chat service on 3101 and a fake Groq server (`tests/e2e/fake-groq.mjs`) on 3199 via `GROQ_API_BASE`, so e2e never calls the real model. Inside `chat/`, run `uv run pytest` and `uv run ruff check .`.
+Inside `backend/` or `frontend/`, `npm test`, `npm run lint` and `npm run format` work per package. `frontend/`'s `npm run test:e2e` builds the frontend and starts the backend on port 3100 with a throwaway database, the chat service on 3101 and a fake Groq server (`tests/e2e/fake-groq.mjs`) on 3199 via `GROQ_API_BASE`, so e2e never calls the real model. Specs script the fake's answers to an exact message (`scriptModel` in `helpers.ts`: status, content, raw body, delay) and read back the requests the service sent (`modelCalls`). Inside `chat/`, run `uv run pytest` and `uv run ruff check .`.
 
 **Implementation notes**
 
@@ -167,8 +167,9 @@ Inside `backend/` or `frontend/`, `npm test`, `npm run lint` and `npm run format
 - Dialogs are rendered as siblings of a card's `<li>`, not inside it, so key events in the dialog never reach the drag listeners.
 - Sessions: every authenticated request refreshes `last_seen_at`; a session idle for 20 minutes is deleted on next use and no longer blocks sign-in. The cookie has no max-age. The client sends a heartbeat at most once a minute while the user is active, so typing or dragging without saving keeps the session alive.
 - Any 401 from the API sends the user to `/signin?reason=expired`; an idle timeout to `/signin?reason=timeout`.
-- The assistant replies in JSON mode, validated by pydantic. Invalid JSON is retried like a transient error. Actions naming unknown cards or columns are dropped server-side; the client applies the rest through store actions, so blank input is still rejected.
-- tenacity owns retries (`wait_exponential_jitter(initial=1, max=20)`, 5 attempts); LiteLLM is called with `num_retries=0` so retries do not multiply.
+- The assistant replies in JSON mode. The service reads the first JSON object even inside a code fence or prose; a reply with no object, or no message and no actions, is retried like a transient error, as is Groq's 400 `json_validate_failed`. Each action is validated on its own (pydantic): a column name or unique card title is accepted in place of an id, and invalid actions or ones naming unknown cards or columns are dropped, with "(N requested changes could not be applied.)" added to the reply. The client applies the rest through store actions, so blank input is still rejected.
+- tenacity owns retries (`wait_exponential_jitter(initial=1, max=20)`, 5 attempts, none started after 100 s, 45 s per request) so the service always answers inside the backend's 180 s timeout, which it reports as 504. LiteLLM is called with `num_retries=0` so retries do not multiply. A rejected key (401) is not retried and returns 503 naming `GROQ_API_KEY`.
+- A reply that arrives after the user switched boards is ignored: the board store is shared, and the chat panel is keyed by board. History sent to the API is the last 40 messages, starting at a question, each clipped to 4,000 characters.
 - Never commit API keys. `GROQ_API_KEY` belongs only in the root `.env`.
 - dnd-kit uses `pointerWithin` with a `rectIntersection` fallback and keeps the last target; the default `closestCorners` oscillated between columns and caused a render loop (React error #185).
 - The session cookie is `Secure` only when `NODE_ENV=production`; run production behind HTTPS.

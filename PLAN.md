@@ -115,4 +115,15 @@ Decisions: the assistant is a separate Python service in `chat/` (FastAPI, LiteL
 - [x] Unit tests for assistant actions, the chat panel, the password dialog and idle timeout (47 tests)
 - [x] Playwright against a fake Groq server: questions, moves, adds, retries after 503s, per-board conversations, layout and fixed card height, change password, single sign-in, idle warning and timeout (63 tests)
 - [x] Root scripts run all three services; AGENTS.md, CLAUDE.md and README.md updated
-- [ ] Live call to Groq: blocked by the environment's network policy (api.groq.com returns 403 from the proxy)
+- [ ] Live call to Groq: api.groq.com is now reachable, but GROQ_API_KEY is not yet set in the environment
+
+## Simulated model testing (5 rounds)
+
+The fake Groq server can now script exact responses per message and report the requests it received. Each round added a spec, ran the full suite, then fixed what failed.
+
+- [x] Round 1, model output (`assistant-model.spec.ts`): code fences and prose around the JSON, column names and card titles for ids, one bad action no longer fails the whole reply, default message when only actions come back, Groq `json_validate_failed` retried, rejected key reported clearly
+- [x] Round 2, conversations (`assistant-conversation.spec.ts`): a reply over 4,000 characters broke every later message ("Invalid chat request"); history now clipped and starts at a question
+- [x] Round 3, in-flight requests (`assistant-flows.spec.ts`): a slow reply was applied to the board the user had switched to; now ignored
+- [x] Round 4, panel UI (`assistant-ui.spec.ts`): the scrolling conversation was not keyboard-focusable (axe); fixed
+- [x] Round 5, stress (`assistant-stress.spec.ts`): concurrent users, truncated JSON, duplicate titles, a 300-card board; backend now answers 504 on a timeout and copes with a non-JSON error, and the service's retries fit inside the backend's timeout
+- [x] Totals: backend 32, frontend 51, chat 28, Playwright 105; the full Playwright suite passed twice over with `--repeat-each=2` (210 runs, no flakes)

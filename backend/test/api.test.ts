@@ -261,4 +261,22 @@ describe("chat", () => {
     const res = await agent.post("/api/chat").send(body()).expect(503);
     expect(res.body.error).toMatch(/not running/);
   });
+
+  it("reports a chat service that takes too long", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new DOMException("timed out", "TimeoutError"),
+    );
+    const { agent } = await signUp();
+    const res = await agent.post("/api/chat").send(body()).expect(504);
+    expect(res.body.error).toMatch(/took too long/);
+  });
+
+  it("copes with an error that is not JSON", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("Internal Server Error", { status: 500 }),
+    );
+    const { agent } = await signUp();
+    const res = await agent.post("/api/chat").send(body()).expect(502);
+    expect(res.body.error).toMatch(/could not answer/);
+  });
 });

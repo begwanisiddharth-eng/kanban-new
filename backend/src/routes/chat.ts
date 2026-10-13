@@ -5,6 +5,9 @@ import { chatSchema } from "../schema";
 
 export const chatRouter = Router();
 
+// The chat service bounds its own retries well inside this.
+const CHAT_TIMEOUT_MS = 180_000;
+
 chatRouter.post("/", requireUser, async (req, res) => {
   const body = chatSchema.safeParse(req.body);
   if (!body.success) {
@@ -18,15 +21,20 @@ chatRouter.post("/", requireUser, async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body.data),
-      signal: AbortSignal.timeout(180_000),
+      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     });
-  } catch {
-    res
-      .status(503)
-      .json({ error: "The assistant is not running. Start the chat service." });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "TimeoutError")
+      res.status(504).json({
+        error: "The assistant took too long to answer. Please try again.",
+      });
+    else
+      res.status(503).json({
+        error: "The assistant is not running. Start the chat service.",
+      });
     return;
   }
-  const data = (await reply.json()) as { detail?: unknown };
+  const data = (await reply.json().catch(() => ({}))) as { detail?: unknown };
   if (reply.ok) res.json(data);
   else
     res.status(reply.status === 503 ? 503 : 502).json({
