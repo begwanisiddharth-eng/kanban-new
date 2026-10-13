@@ -1,0 +1,32 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-accent: #ecad0a;
+  --color-primary: #209dd7;
+  --color-secondary: #753991;
+  --color-navy: #032147;
+  --color-muted: #888888;
+
+  --color-page: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-column: #eef0f3;
+  --color-border: #e3e6eb;
+  --color-ring: #209dd7;
+  --color-destructive: #c8372d;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-page text-navy antialiased;
+  }
+}
+
+@utility board-grid {
+  @apply grid snap-x snap-mandatory scroll-px-6 auto-cols-[min(85vw,18rem)] grid-flow-col items-start gap-4 overflow-x-auto px-6 pb-8 md:snap-none md:auto-cols-[minmax(15.5rem,1fr)] lg:px-10;
+}
