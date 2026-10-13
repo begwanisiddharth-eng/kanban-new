@@ -87,13 +87,11 @@ export function useBoardDnd() {
     moveCard(activeCard, to.id, index);
   };
 
-  const describe = (id: string | number | undefined) => {
-    if (id === undefined) return "";
-    const column = findColumn(preview ?? columns, String(id));
-    const card = cards[String(id)];
+  const describe = (activeId: string, overId: string) => {
+    const column = findColumn(preview ?? columns, overId);
     if (!column) return "";
-    if (!card) return `column ${column.name}`;
-    const position = column.cardIds.indexOf(card.id) + 1;
+    const target = cards[overId] ? overId : activeId;
+    const position = Math.max(column.cardIds.indexOf(target), 0) + 1;
     return `position ${position} of ${column.cardIds.length} in ${column.name}`;
   };
 
@@ -101,12 +99,12 @@ export function useBoardDnd() {
     onDragStart: ({ active }) =>
       `Picked up card ${cards[String(active.id)]?.title}.`,
     onDragOver: ({ active, over }) =>
-      over
-        ? `Card ${cards[String(active.id)]?.title} moved to ${describe(active.id)}.`
-        : "",
+      over && over.id !== active.id
+        ? `Card ${cards[String(active.id)]?.title} moved to ${describe(String(active.id), String(over.id))}.`
+        : undefined,
     onDragEnd: ({ active, over }) =>
       over
-        ? `Card ${cards[String(active.id)]?.title} dropped at ${describe(active.id)}.`
+        ? `Card ${cards[String(active.id)]?.title} dropped at ${describe(String(active.id), String(over.id))}.`
         : "Card dropped.",
     onDragCancel: ({ active }) =>
       `Moving card ${cards[String(active.id)]?.title} was cancelled.`,

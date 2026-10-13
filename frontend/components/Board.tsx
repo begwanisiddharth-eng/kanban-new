@@ -46,10 +46,12 @@ export function Board() {
       </div>
       <DragOverlay>
         {dnd.activeCard && (
-          <CardBody
-            card={dnd.activeCard}
-            className="ring-accent/60 rotate-2 cursor-grabbing shadow-xl ring-2"
-          />
+          <div className="cursor-grabbing">
+            <CardBody
+              card={dnd.activeCard}
+              className="ring-accent/60 rotate-2 shadow-xl ring-2"
+            />
+          </div>
         )}
       </DragOverlay>
     </DndContext>
