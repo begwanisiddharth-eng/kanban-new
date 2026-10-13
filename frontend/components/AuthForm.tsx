@@ -27,13 +27,21 @@ const COPY = {
   },
 } as const;
 
+const REASONS: Record<string, string> = {
+  timeout: "You were signed out after 20 minutes of inactivity.",
+  expired: "Your session has ended. Please sign in again.",
+};
+
 export function AuthForm({ mode }: { mode: "signin" | "signup" }) {
   const router = useRouter();
   const copy = COPY[mode];
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get("reason");
+    setNotice(REASONS[reason ?? ""] ?? null);
     api.me().then(
       () => router.replace("/"),
       () => {},
@@ -68,6 +76,14 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" }) {
         <div className="border-border bg-surface rounded-2xl border p-6 shadow-sm">
           <h1 className="text-navy text-lg font-semibold">{copy.title}</h1>
           <p className="text-muted mt-1 text-sm">{copy.subtitle}</p>
+          {notice && (
+            <p
+              role="status"
+              className="border-accent/60 bg-accent/10 text-navy mt-4 rounded-lg border px-3 py-2 text-sm"
+            >
+              {notice}
+            </p>
+          )}
           <form action={submit} className="mt-6 grid gap-5">
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>

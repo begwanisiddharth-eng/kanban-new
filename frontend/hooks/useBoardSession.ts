@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, isSessionExpired } from "@/lib/api";
 import { selectBoardData, selectIsDirty } from "@/store/boardStore";
 import { useBoardStore, useBoardStoreApi } from "@/store/BoardStoreProvider";
 import type { BoardSummary, SavedBoard } from "@/types/board";
@@ -31,12 +31,21 @@ export function useBoardSession(initialBoards: BoardSummary[]) {
       await task();
       return true;
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Something went wrong.");
+      if (isSessionExpired(e)) expire();
+      else
+        setError(e instanceof ApiError ? e.message : "Something went wrong.");
       return false;
     } finally {
       setBusy(false);
     }
   }
+
+  const expire = () => router.replace("/signin?reason=expired");
+
+  const timeOut = async () => {
+    await api.signOut().catch(() => undefined);
+    router.replace("/signin?reason=timeout");
+  };
 
   function show(board: SavedBoard) {
     store.getState().load(board);
@@ -98,6 +107,8 @@ export function useBoardSession(initialBoards: BoardSummary[]) {
     create,
     remove,
     signOut,
+    expire,
+    timeOut,
     guard,
     unsaved: {
       open: pending !== null,

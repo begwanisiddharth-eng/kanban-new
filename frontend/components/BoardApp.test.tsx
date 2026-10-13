@@ -22,6 +22,7 @@ vi.mock("@/lib/api", async (original) => ({
     createBoard: vi.fn(),
     deleteBoard: vi.fn(async () => undefined),
     signOut: vi.fn(async () => undefined),
+    heartbeat: vi.fn(async () => undefined),
   },
 }));
 
@@ -129,7 +130,8 @@ describe("BoardApp", () => {
   it("asks before signing out with unsaved changes", async () => {
     const { button, makeDirty, user } = setup();
     await makeDirty();
-    await user.click(button("Sign out"));
+    await user.click(button("Account"));
+    await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
     await user.click(
       within(await screen.findByRole("alertdialog")).getByRole("button", {
         name: "Discard changes",

@@ -4,11 +4,15 @@ import { useState } from "react";
 import { SquareKanban } from "lucide-react";
 
 import { MAX_BOARDS, useBoardSession } from "@/hooks/useBoardSession";
+import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 import { useBoardStore } from "@/store/BoardStoreProvider";
 import type { BoardSummary } from "@/types/board";
 import { Board } from "./Board";
 import { BoardToolbar } from "./BoardToolbar";
+import { ChangePasswordDialog } from "./ChangePasswordDialog";
+import { ChatPanel } from "./ChatPanel";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { IdleWarningDialog } from "./IdleWarningDialog";
 import { NewBoardDialog } from "./NewBoardDialog";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 
@@ -21,9 +25,14 @@ export function BoardApp({ email, boards: initialBoards }: BoardAppProps) {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const idle = useIdleTimeout({
+    onTimeout: session.timeOut,
+    onExpired: session.expire,
+  });
 
   return (
-    <main className="flex min-h-screen flex-col">
+    <main className="flex min-h-screen flex-col xl:h-dvh xl:min-h-[40rem]">
       <header className="flex flex-col gap-5 px-6 pt-8 pb-6 lg:px-10">
         <div className="flex items-center gap-3">
           <div className="bg-navy grid size-10 place-items-center rounded-xl text-white shadow-sm">
@@ -44,9 +53,13 @@ export function BoardApp({ email, boards: initialBoards }: BoardAppProps) {
           onDiscard={() => setDiscarding(true)}
           onSave={session.save}
           onSignOut={() => session.guard(session.signOut)}
+          onChangePassword={() => setChangingPassword(true)}
         />
       </header>
-      <Board key={boardId} />
+      <div className="board-area">
+        <Board key={boardId} />
+        <ChatPanel key={boardId} onExpired={session.expire} />
+      </div>
       <UnsavedChangesDialog
         open={session.unsaved.open}
         boardName={name}
@@ -70,6 +83,17 @@ export function BoardApp({ email, boards: initialBoards }: BoardAppProps) {
         description={`"${name}" and all of its cards will be permanently deleted.`}
         confirmLabel="Delete board"
         onConfirm={session.remove}
+      />
+      <ChangePasswordDialog
+        open={changingPassword}
+        onOpenChange={setChangingPassword}
+        onExpired={session.expire}
+      />
+      <IdleWarningDialog
+        secondsLeft={idle.secondsLeft}
+        dirty={session.dirty}
+        onStay={idle.staySignedIn}
+        onSignOut={session.signOut}
       />
       <ConfirmDialog
         open={discarding}

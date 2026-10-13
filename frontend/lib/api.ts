@@ -1,6 +1,10 @@
 import type { Board, BoardSummary, SavedBoard } from "@/types/board";
+import type { AssistantReply, ChatMessage } from "@/types/chat";
 
 export type User = { id: string; email: string };
+
+export const isSessionExpired = (error: unknown) =>
+  error instanceof ApiError && error.status === 401;
 
 export class ApiError extends Error {
   constructor(
@@ -35,6 +39,14 @@ export const api = {
   signIn: (email: string, password: string) =>
     request<User>("/auth/signin", send("POST", { email, password })),
   signOut: () => request<void>("/auth/signout", send("POST")),
+  heartbeat: () => request<void>("/auth/heartbeat", send("POST")),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>(
+      "/auth/password",
+      send("POST", { currentPassword, newPassword }),
+    ),
+  chat: (board: Board, messages: ChatMessage[]) =>
+    request<AssistantReply>("/chat", send("POST", { board, messages })),
   listBoards: () => request<BoardSummary[]>("/boards"),
   getBoard: (id: string) => request<SavedBoard>(`/boards/${id}`),
   createBoard: (name: string) =>

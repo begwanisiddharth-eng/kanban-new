@@ -26,7 +26,7 @@ export function Column({ column }: { column: ColumnType }) {
     <section
       aria-label={column.name}
       className={cn(
-        "bg-column flex flex-col rounded-2xl p-3 transition-shadow duration-200",
+        "bg-column flex h-[34rem] min-h-0 snap-start flex-col rounded-2xl p-3 transition-shadow duration-200 xl:h-full",
         isOver && "ring-accent/50 ring-2",
       )}
     >
@@ -51,7 +51,7 @@ export function Column({ column }: { column: ColumnType }) {
       >
         <ul
           ref={setNodeRef}
-          className="empty:border-border empty:before:text-muted flex min-h-16 flex-col gap-2.5 empty:min-h-28 empty:items-center empty:justify-center empty:rounded-xl empty:border-2 empty:border-dashed empty:before:text-sm empty:before:content-['No_cards_yet']"
+          className="empty:border-border empty:before:text-muted -mx-1 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-1 py-1 empty:mx-0 empty:items-center empty:justify-center empty:rounded-xl empty:border-2 empty:border-dashed empty:before:text-sm empty:before:content-['No_cards_yet']"
         >
           {column.cardIds.map((id) => (
             <Card key={id} card={cards[id]} />

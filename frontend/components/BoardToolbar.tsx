@@ -1,11 +1,12 @@
 "use client";
 
-import { LogOut, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MAX_BOARDS } from "@/hooks/useBoardSession";
 import type { BoardSummary } from "@/types/board";
+import { AccountMenu } from "./AccountMenu";
 import { BoardSwitcher } from "./BoardSwitcher";
 
 type BoardToolbarProps = {
@@ -21,6 +22,7 @@ type BoardToolbarProps = {
   onDiscard: () => void;
   onSave: () => void;
   onSignOut: () => void;
+  onChangePassword: () => void;
 };
 
 export function BoardToolbar(props: BoardToolbarProps) {
@@ -84,13 +86,12 @@ export function BoardToolbar(props: BoardToolbarProps) {
           Save
         </Button>
         <span className="bg-border mx-1 hidden h-6 w-px sm:block" />
-        <span className="text-muted hidden text-sm lg:inline">
-          {props.email}
-        </span>
-        <Button variant="ghost" onClick={props.onSignOut} disabled={busy}>
-          <LogOut />
-          Sign out
-        </Button>
+        <AccountMenu
+          email={props.email}
+          disabled={busy}
+          onChangePassword={props.onChangePassword}
+          onSignOut={props.onSignOut}
+        />
       </div>
     </div>
   );
