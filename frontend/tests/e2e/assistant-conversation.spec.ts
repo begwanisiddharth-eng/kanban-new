@@ -47,7 +47,10 @@ test("keeps talking after a very long reply", async ({ page }) => {
   await expect(log(page)).toContainText("Sure.");
   const [call] = await modelCalls(page, followUp);
   expect(call.messages.at(-2)?.role).toBe("assistant");
-  expect(call.messages.every((m) => m.content.length <= 4000)).toBe(true);
+  // History messages are clipped; the system prompt carries the board.
+  expect(call.messages.slice(1).every((m) => m.content.length <= 4000)).toBe(
+    true,
+  );
 });
 
 test("sends at most the last 40 messages", async ({ page }) => {

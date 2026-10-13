@@ -1,9 +1,11 @@
 import json
+import re
 from typing import Any
 
 import litellm
 from pydantic import TypeAdapter, ValidationError
 from tenacity import (
+    RetryCallState,
     retry,
     retry_if_exception,
     stop_after_attempt,
@@ -25,6 +27,9 @@ from .models import (
 
 MODEL = "groq/openai/gpt-oss-120b"
 
+# LiteLLM prints a help banner on every failed call, retries included.
+litellm.suppress_debug_info = True
+
 SYSTEM_PROMPT = """You are the assistant inside a Kanban board app. The user's \
 current board is given below as JSON: five columns (id, name, cardIds in order) \
 and cards (id, title, details).
@@ -44,10 +49,16 @@ Available actions:
 {"type": "delete_card", "cardId": "..."}
 {"type": "rename_column", "columnId": "...", "name": "..."}
 
-Rules: a card always needs a non-empty title and details. Columns cannot be \
-added or removed. Only include actions the user asked for; for questions, \
-return an empty actions list. The changes are unsaved until the user clicks \
-Save, so do not claim they are saved.
+Rules:
+- A card always needs a non-empty title and details. When the user does not \
+give details, write a short, useful description yourself; do not ask for one.
+- Columns cannot be added or removed.
+- Only include actions the user asked for; for questions, return an empty \
+actions list. If the request is unclear, ask which card or column they mean.
+- Changes stay unsaved until the user clicks Save. You cannot save: never say \
+the board is saved, and if the user asks you to save, remind them to click Save.
+- The reply is shown as plain text: no Markdown (no **, #, tables or links). \
+Use short lines and "- " bullets for lists.
 
 Board:
 """
@@ -69,6 +80,25 @@ RETRYABLE = (
     litellm.ServiceUnavailableError,
     InvalidReply,
 )
+
+
+def retry_hint(error: BaseException | None) -> float:
+    """Seconds Groq asks us to wait, from "Please try again in 1m2.5s"."""
+    match = re.search(r"try again in (?:(\d+)m)?(\d+(?:\.\d+)?)(ms|s)", str(error))
+    if not match:
+        return 0.0
+    minutes, amount, unit = match.groups()
+    seconds = float(amount) / 1000 if unit == "ms" else float(amount)
+    return int(minutes or 0) * 60 + seconds
+
+
+backoff = wait_exponential_jitter(initial=1, max=20)
+
+
+def wait_for_retry(state: RetryCallState) -> float:
+    """Exponential backoff, but at least as long as a rate limit asks for."""
+    error = state.outcome.exception() if state.outcome else None
+    return min(max(backoff(state), retry_hint(error) + 0.5), 30)
 
 
 def is_retryable(error: BaseException) -> bool:
@@ -102,14 +132,21 @@ def parse_reply(content: str | None) -> tuple[str, list[Any]]:
         if not actions:
             raise InvalidReply("The reply has no message and no actions")
         reply = "Done."
-    return reply.strip(), actions
+    return plain_text(reply), actions
+
+
+def plain_text(reply: str) -> str:
+    """Strips Markdown the model sometimes uses despite the prompt."""
+    reply = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m[1] or m[2], reply)
+    reply = re.sub(r"^#{1,6}\s+", "", reply, flags=re.MULTILINE)
+    return reply.strip()
 
 
 # Five attempts, but none started after 100 s, so with the 45 s request
 # timeout an answer always comes back inside the backend's 180 s limit.
 @retry(
     retry=retry_if_exception(is_retryable),
-    wait=wait_exponential_jitter(initial=1, max=20),
+    wait=wait_for_retry,
     stop=stop_after_attempt(5) | stop_after_delay(100),
     reraise=True,
 )

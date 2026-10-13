@@ -185,7 +185,7 @@ async def test_keeps_valid_actions_and_reports_the_rest(monkeypatch):
 
 def test_waits_grow_exponentially_up_to_twenty_seconds(monkeypatch):
     monkeypatch.undo()  # use the real wait strategy, not the test override
-    wait = assistant.complete.retry.wait
+    wait = assistant.backoff
     for attempt, base in [(1, 1), (2, 2), (3, 4), (4, 8), (5, 16), (6, 20)]:
         delay = wait(SimpleNamespace(attempt_number=attempt))
         assert base <= delay <= min(base + 1, 20)
@@ -243,3 +243,37 @@ def test_stops_retrying_in_time_for_the_backend():
     assert not stop(state(2, 30))
     assert stop(state(2, 101))
     assert stop(state(5, 10))
+
+
+@pytest.mark.parametrize(
+    "message, seconds",
+    [
+        ("Please try again in 3.045s. Need more tokens?", 3.045),
+        ("Please try again in 1m2.5s.", 62.5),
+        ("Please try again in 450ms.", 0.45),
+        ("Over capacity", 0.0),
+    ],
+)
+def test_reads_the_wait_groq_asks_for(message, seconds):
+    error = litellm.RateLimitError(message, llm_provider="groq", model="m")
+    assert assistant.retry_hint(error) == pytest.approx(seconds)
+
+
+def test_waits_at_least_as_long_as_the_rate_limit_asks():
+    def state(attempt, message):
+        error = litellm.RateLimitError(message, llm_provider="groq", model="m")
+        return SimpleNamespace(
+            attempt_number=attempt,
+            outcome=SimpleNamespace(exception=lambda: error),
+        )
+
+    assert assistant.wait_for_retry(state(1, "try again in 7.2s")) >= 7.7
+    assert assistant.wait_for_retry(state(1, "try again in 5m0s")) == 30
+    assert assistant.wait_for_retry(state(1, "no hint")) <= 2
+
+
+def test_strips_markdown_from_replies():
+    content = json.dumps(
+        {"reply": "## Summary\nIn **In Progress**: __two__ cards.", "actions": []}
+    )
+    assert assistant.parse_reply(content)[0] == "Summary\nIn In Progress: two cards."

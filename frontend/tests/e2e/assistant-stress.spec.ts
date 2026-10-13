@@ -65,8 +65,11 @@ test("several users chat at once, each about their own board", async ({
   );
   for (const [i, { page, context }] of users.entries()) {
     await page.reload();
+    // Wait for the reloaded board before reading it.
+    await expect
+      .poll(() => cardTitles(page, "To Do"))
+      .toContain(`Card of user ${i}`);
     const titles = await cardTitles(page, "To Do");
-    expect(titles).toContain(`Card of user ${i}`);
     expect(titles.filter((t) => t?.startsWith("Card of user"))).toHaveLength(1);
     await context.close();
   }
