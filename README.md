@@ -1,26 +1,36 @@
 # Kanban
 
-A clean Kanban app for tracking work. Sign in, keep up to three boards, and move cards across five columns with drag and drop.
+A clean Kanban app for tracking work. Sign in, keep up to three boards, move cards across five columns with drag and drop, and ask the board assistant to make changes for you.
 
 ## Getting started
 
-Requires Node.js 20 or later.
+Requires Node.js 20 or later, Python 3.12 or later and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-npm run setup     # installs everything (once)
-npm run build     # builds the web app
-npm start         # starts the server
+cp .env.example .env   # then add your Groq API key to GROQ_API_KEY
+npm run setup          # installs everything (once)
+npm run build          # builds the web app
+npm start              # starts the server and the assistant
 ```
 
-Open http://localhost:4000. Your data is stored in `data/kanban.db`.
+Open http://localhost:4000. Your data is stored in `data/kanban.db`. Never commit `.env`; it is gitignored.
 
 For development with live reload, run `npm run dev` and open http://localhost:3000 instead.
 
 ## Your account
 
-**Create an account** with your email and a password of at least 8 characters. **Sign in** with the same details next time. **Sign out** from the top right of the board.
+**Create an account** with your email and a password of at least 8 characters. **Sign in** with the same details next time. Your boards are private to your account.
 
-Your boards are private to your account.
+The account menu (the person icon at the top right) shows your email and has:
+
+- **Change password**: enter your current password and a new one of at least 8 characters.
+- **Sign out**.
+
+**One sign-in at a time.** While your account is signed in somewhere, a new sign-in elsewhere is refused. Sign out there first, or wait until 20 minutes after it was last used.
+
+**Inactivity.** After 20 minutes without activity you are signed out. Two minutes before, a dialog lets you stay signed in. Unsaved changes are lost when this happens, so save often.
+
+There is no password reset. If you forget your password, the account cannot be recovered.
 
 ## Boards
 
@@ -39,6 +49,14 @@ Every board has five columns: Backlog, To Do, In Progress, Review and Done.
 - **Edit a card** by hovering over it and clicking the pencil icon.
 - **Delete a card** by hovering over it and clicking the bin icon, then confirming.
 - **Move a card** by dragging it within a column or to another column. On a touchscreen, press and hold a card briefly first.
+
+## Board assistant
+
+The assistant panel sits to the right of the columns. Ask it about the board ("What is in progress?") or ask for changes: add, edit, move or delete cards, and rename columns. Press Enter to send and Shift+Enter for a new line.
+
+Its changes appear on the board straight away but are unsaved, like your own edits: click **Save** to keep them or **Discard changes** to undo them. Each board has its own conversation, which is cleared when you switch board or reload. The **Clear conversation** button (the circular arrow) clears it too.
+
+If the model is busy, the assistant retries a few times before reporting an error.
 
 ## Saving
 

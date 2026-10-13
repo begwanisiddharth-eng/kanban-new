@@ -58,7 +58,7 @@ Decision: a separate Express server in `backend/` with SQLite (better-sqlite3) s
 
 - [x] SQLite schema: users, sessions, boards (board data stored as JSON); path from `DATABASE_PATH`, default `data/kanban.db` at the project root (gitignored)
 - [x] Password hashing with scrypt and timing-safe comparison
-- [x] Sessions: random token in an httpOnly, SameSite=Lax cookie; only its SHA-256 hash stored; 30-day expiry
+- [x] Sessions: random token in an httpOnly, SameSite=Lax cookie; only its SHA-256 hash stored (since Phase 7: 20-minute idle timeout and one session per user)
 - [x] Sign up, sign in, sign out and current-user endpoints with zod validation and clear errors
 - [x] Board API: list, create (max 3 per user), read, save, delete (never the last board); every route scoped to the signed-in user
 - [x] Backend tests for passwords, sessions, the board schema and the full API with Supertest (20 tests)
@@ -81,3 +81,38 @@ Decision: a separate Express server in `backend/` with SQLite (better-sqlite3) s
 - [x] AGENTS.md, CLAUDE.md and README.md updated
 
 Defects found and fixed in this phase: the toolbar overflowed on phones; the sign-up/sign-in link (`#209dd7` text) failed WCAG contrast; an e2e race where navigating right after Sign out could cancel the sign-out request.
+
+# Phase 7: Board assistant and account hardening
+
+Decisions: the assistant is a separate Python service in `chat/` (FastAPI, LiteLLM with the fixed model `groq/openai/gpt-oss-120b`, tenacity for retries), reached only through the backend's `/api/chat`. It returns a reply plus board actions, which the client applies as unsaved edits. Password reset is limited to changing the password while signed in; a second sign-in is refused while a session is active; sessions end after 20 minutes of inactivity.
+
+## Assistant service
+
+- [x] `chat/` managed with uv; `GROQ_API_KEY` read from the root `.env` (gitignored, never committed); `.env.example` documents it empty
+- [x] JSON-mode completion validated with pydantic; actions: add, update, move and delete card, rename column; actions with unknown ids dropped
+- [x] Exponential backoff with jitter (tenacity, 5 attempts) on rate limits, timeouts, server errors and invalid replies; LiteLLM's own retries off
+- [x] Clear 503 when the key is missing, 502 when the model fails after retries
+- [x] pytest suite with the model mocked (13 tests); ruff lint and format
+
+## Server
+
+- [x] `POST /api/chat` proxies to the chat service for signed-in users only; 503 when it is not running
+- [x] Sessions: `last_seen_at` refreshed on each request, expire after 20 minutes idle; `UNIQUE(user_id)` so a second sign-in gets 409; schema migrated with `PRAGMA user_version`
+- [x] `POST /api/auth/heartbeat` and `POST /api/auth/password` (current password required)
+- [x] Backend tests extended (30 tests)
+
+## Client
+
+- [x] Assistant panel to the right of the five columns, three quarters of the column height, one row with no wrap on a maximized laptop screen (verified at 1280, 1366 and 1920 px)
+- [x] Fixed-height columns and fixed-height cards (titles and details clamped)
+- [x] Assistant edits applied through store actions, shown as unsaved; one conversation per board
+- [x] Account menu with email, Change password and Sign out
+- [x] Idle tracking: heartbeat while active, warning dialog at 18 minutes, sign-out at 20 with a notice on the sign-in page; an expired session also returns to sign-in
+- [x] Cross-column drag fixed (custom collision detection stopped a render loop)
+
+## Testing and docs
+
+- [x] Unit tests for assistant actions, the chat panel, the password dialog and idle timeout (47 tests)
+- [x] Playwright against a fake Groq server: questions, moves, adds, retries after 503s, per-board conversations, layout and fixed card height, change password, single sign-in, idle warning and timeout (63 tests)
+- [x] Root scripts run all three services; AGENTS.md, CLAUDE.md and README.md updated
+- [ ] Live call to Groq: blocked by the environment's network policy (api.groq.com returns 403 from the proxy)
