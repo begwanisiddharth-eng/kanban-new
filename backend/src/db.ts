@@ -12,8 +12,8 @@ const SCHEMA = `
   );
   CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    expires_at INTEGER NOT NULL
+    user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    last_seen_at INTEGER NOT NULL
   );
   CREATE TABLE IF NOT EXISTS boards (
     id TEXT PRIMARY KEY,
@@ -36,6 +36,11 @@ function open() {
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
+  // Version 1: one idle-timed session per user. Old sessions are dropped.
+  if (db.pragma("user_version", { simple: true }) === 0) {
+    db.exec("DROP TABLE IF EXISTS sessions");
+    db.pragma("user_version = 1");
+  }
   db.exec(SCHEMA);
   return db;
 }

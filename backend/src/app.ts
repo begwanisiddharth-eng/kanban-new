@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { authRouter } from "./routes/auth";
 import { boardsRouter } from "./routes/boards";
+import { chatRouter } from "./routes/chat";
 
 const FRONTEND_DIR =
   process.env.FRONTEND_DIR ??
@@ -19,6 +20,7 @@ export function createApp() {
 
   app.use("/api/auth", authRouter);
   app.use("/api/boards", boardsRouter);
+  app.use("/api/chat", chatRouter);
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Not found." });
   });

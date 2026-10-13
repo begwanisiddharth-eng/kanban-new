@@ -40,12 +40,29 @@ const email = z
   .toLowerCase()
   .pipe(z.email({ error: "Enter a valid email address." }).max(254));
 
-export const signUpSchema = z.object({
-  email,
-  password: z
-    .string()
-    .min(8, { error: "Use at least 8 characters for your password." })
-    .max(128, { error: "Use 128 characters or fewer for your password." }),
+const newPassword = z
+  .string()
+  .min(8, { error: "Use at least 8 characters for your password." })
+  .max(128, { error: "Use 128 characters or fewer for your password." });
+
+export const signUpSchema = z.object({ email, password: newPassword });
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, { error: "Enter your current password." }),
+  newPassword,
+});
+
+export const chatSchema = z.object({
+  board: boardSchema,
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().trim().min(1).max(4000),
+      }),
+    )
+    .min(1)
+    .max(40),
 });
 
 export const signInSchema = z.object({

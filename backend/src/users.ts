@@ -18,3 +18,16 @@ export function findUserByEmail(email: string) {
     .prepare(`SELECT id, email, password_hash FROM users WHERE email = ?`)
     .get(email) as (User & { password_hash: string }) | undefined;
 }
+
+export function getPasswordHash(userId: string) {
+  return getDb()
+    .prepare(`SELECT password_hash FROM users WHERE id = ?`)
+    .pluck()
+    .get(userId) as string;
+}
+
+export function setPasswordHash(userId: string, passwordHash: string) {
+  getDb()
+    .prepare(`UPDATE users SET password_hash = ? WHERE id = ?`)
+    .run(passwordHash, userId);
+}

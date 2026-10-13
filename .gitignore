@@ -12,8 +12,9 @@ test-results/
 playwright-report/
 blob-report/
 
-# env files
+# env files (.env holds secrets; the example is committed)
 .env*
+!.env.example
 
 # logs
 *.log
@@ -28,3 +29,9 @@ Thumbs.db
 # local database (keep the data/ directory itself)
 data/*
 !data/.gitkeep
+
+# python
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/

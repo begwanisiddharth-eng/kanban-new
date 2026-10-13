@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 
-import { SESSION_TTL, validateSession } from "./sessions";
+import { validateSession } from "./sessions";
 import type { User } from "./users";
 
 export const SESSION_COOKIE = "session";
@@ -13,7 +13,6 @@ export function setSessionCookie(res: Response, token: string) {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: SESSION_TTL,
   });
 }
 
