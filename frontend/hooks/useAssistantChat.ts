@@ -9,6 +9,18 @@ import type { ChatMessage } from "@/types/chat";
 export type ChatEntry = ChatMessage & { changes?: string[]; failed?: boolean };
 
 const MAX_HISTORY = 40;
+// The API caps each message; long replies are clipped when sent back as history.
+const MAX_MESSAGE_LENGTH = 4000;
+
+/** The last messages to send, starting with a question and clipped to the API's limits. */
+export function chatHistory(entries: ChatEntry[]): ChatMessage[] {
+  const history = entries.filter((entry) => !entry.failed).slice(-MAX_HISTORY);
+  const start = history.findIndex((entry) => entry.role === "user");
+  return history.slice(Math.max(start, 0)).map(({ role, content }) => ({
+    role,
+    content: content.slice(0, MAX_MESSAGE_LENGTH),
+  }));
+}
 
 export function useAssistantChat(onExpired: () => void) {
   const store = useBoardStoreApi();
@@ -19,10 +31,7 @@ export function useAssistantChat(onExpired: () => void) {
     const content = text.trim();
     if (!content || pending) return;
     const question: ChatEntry = { role: "user", content };
-    const history = [...entries, question]
-      .filter((entry) => !entry.failed)
-      .slice(-MAX_HISTORY)
-      .map(({ role, content }) => ({ role, content }));
+    const history = chatHistory([...entries, question]);
     setEntries((list) => [...list, question]);
     setPending(true);
     try {
