@@ -1,10 +1,16 @@
 // A stand-in for Groq's OpenAI-compatible API, used by the e2e tests through
 // GROQ_API_BASE. It answers a few phrasings deterministically and fails the
 // first two calls of a "flaky" message so retries are exercised end to end.
+// Tests can also script the responses for an exact message with
+// POST /__script { message, responses: [{ status?, content?, body?, delayMs? }] }
+// (used in order, the last one repeating) and read what the service sent with
+// GET /__calls?message=...
 import { createServer } from "node:http";
 
 const port = Number(process.env.FAKE_GROQ_PORT ?? 3199);
 const failures = new Map();
+const scripts = new Map();
+const calls = new Map();
 
 function answer(messages) {
   const board = JSON.parse(messages[0].content.split("Board:\n")[1]);
@@ -44,9 +50,33 @@ function answer(messages) {
 createServer((req, res) => {
   let body = "";
   req.on("data", (chunk) => (body += chunk));
-  req.on("end", () => {
-    const { messages, model } = JSON.parse(body);
+  req.on("end", async () => {
+    const url = new URL(req.url, "http://localhost");
+    if (url.pathname === "/__script") {
+      const { message, responses } = JSON.parse(body);
+      scripts.set(message, responses);
+      calls.delete(message);
+      return res.end("{}");
+    }
+    if (url.pathname === "/__calls") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify(calls.get(url.searchParams.get("message")) ?? []),
+      );
+    }
+    const request = JSON.parse(body);
+    const { messages, model } = request;
     const last = messages.at(-1).content;
+    calls.set(last, [...(calls.get(last) ?? []), request]);
+    const script = scripts.get(last);
+    if (script) {
+      const step = script[calls.get(last).length - 1] ?? script.at(-1);
+      if (step.delayMs) await new Promise((r) => setTimeout(r, step.delayMs));
+      res.writeHead(step.status ?? 200, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify(step.body ?? completion(model, step.content)),
+      );
+    }
     if (/flaky/i.test(last) && (failures.get(last) ?? 0) < 2) {
       failures.set(last, (failures.get(last) ?? 0) + 1);
       res.writeHead(503, { "Content-Type": "application/json" });
@@ -60,25 +90,32 @@ createServer((req, res) => {
       return res.end(JSON.stringify({ error: { message: String(error) } }));
     }
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        id: "chatcmpl-fake",
-        object: "chat.completion",
-        created: Math.floor(Date.now() / 1000),
-        model,
-        service_tier: "on_demand",
-        choices: [
-          {
-            index: 0,
-            finish_reason: "stop",
-            message: {
-              role: "assistant",
-              content,
-            },
-          },
-        ],
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-      }),
-    );
+    res.end(JSON.stringify(completion(model, content)));
   });
 }).listen(port, "127.0.0.1");
+
+// Shaped like a gpt-oss completion on Groq, which carries a reasoning field.
+function completion(model, content) {
+  return {
+    id: "chatcmpl-fake",
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model,
+    service_tier: "on_demand",
+    choices: [
+      {
+        index: 0,
+        finish_reason: "stop",
+        message: {
+          role: "assistant",
+          content:
+            content === null || typeof content === "string"
+              ? content
+              : JSON.stringify(content),
+          reasoning: "The user wants a change to the board.",
+        },
+      },
+    ],
+    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+  };
+}

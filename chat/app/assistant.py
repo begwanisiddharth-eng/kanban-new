@@ -1,8 +1,11 @@
+import json
+from typing import Any
+
 import litellm
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential_jitter,
 )
@@ -50,7 +53,11 @@ Board:
 
 
 class InvalidReply(Exception):
-    """The model answered with something that is not a valid AssistantReply."""
+    """The model answered with something that is not a usable reply."""
+
+
+class KeyRejected(Exception):
+    """Groq refused the API key."""
 
 
 RETRYABLE = (
@@ -63,24 +70,60 @@ RETRYABLE = (
 )
 
 
+def is_retryable(error: BaseException) -> bool:
+    # Groq answers 400 json_validate_failed when the model's JSON-mode output
+    # does not parse; another attempt usually succeeds.
+    return isinstance(error, RETRYABLE) or (
+        isinstance(error, litellm.BadRequestError)
+        and "json_validate_failed" in str(error)
+    )
+
+
+def parse_reply(content: str | None) -> tuple[str, list[Any]]:
+    """Reads the reply text and raw actions from the model's JSON object,
+    tolerating a code fence or prose around it."""
+    data = None
+    text = (content or "").strip()
+    decoder = json.JSONDecoder()
+    start = text.find("{")
+    while start != -1 and not isinstance(data, dict):
+        try:
+            data = decoder.raw_decode(text, start)[0]
+        except json.JSONDecodeError:
+            pass
+        start = text.find("{", start + 1)
+    if not isinstance(data, dict):
+        raise InvalidReply(f"No JSON object in the reply: {text[:200]!r}")
+    actions = data.get("actions")
+    actions = actions if isinstance(actions, list) else []
+    reply = data.get("reply")
+    if not isinstance(reply, str) or not reply.strip():
+        if not actions:
+            raise InvalidReply("The reply has no message and no actions")
+        reply = "Done."
+    return reply.strip(), actions
+
+
 @retry(
-    retry=retry_if_exception_type(RETRYABLE),
+    retry=retry_if_exception(is_retryable),
     wait=wait_exponential_jitter(initial=1, max=20),
     stop=stop_after_attempt(5),
     reraise=True,
 )
-async def complete(messages: list[dict[str, str]]) -> AssistantReply:
-    response = await litellm.acompletion(
-        model=MODEL,
-        messages=messages,
-        response_format={"type": "json_object"},
-        timeout=60,
-        num_retries=0,
-    )
+async def complete(messages: list[dict[str, str]]) -> tuple[str, list[Any]]:
     try:
-        return AssistantReply.model_validate_json(response.choices[0].message.content)
-    except ValidationError as error:
-        raise InvalidReply(str(error)) from error
+        response = await litellm.acompletion(
+            model=MODEL,
+            messages=messages,
+            response_format={"type": "json_object"},
+            timeout=60,
+            num_retries=0,
+        )
+    except (litellm.AuthenticationError, litellm.BadRequestError) as error:
+        if getattr(error, "status_code", None) == 401:
+            raise KeyRejected(str(error)) from error
+        raise
+    return parse_reply(response.choices[0].message.content)
 
 
 def build_messages(request: ChatRequest) -> list[dict[str, str]]:
@@ -89,6 +132,41 @@ def build_messages(request: ChatRequest) -> list[dict[str, str]]:
         {"role": "system", "content": SYSTEM_PROMPT + board},
         *({"role": m.role, "content": m.content} for m in request.messages),
     ]
+
+
+ACTION = TypeAdapter(Action)
+
+
+def resolve_ids(board: Board, raw: Any) -> Any:
+    """Maps a column name or a card title the model used in place of an id."""
+    if not isinstance(raw, dict):
+        return raw
+    raw = dict(raw)
+    columns = {c.name.strip().lower(): c.id for c in board.columns}
+    column_id = raw.get("columnId")
+    if isinstance(column_id, str) and column_id not in {c.id for c in board.columns}:
+        raw["columnId"] = columns.get(column_id.strip().lower(), column_id)
+    card_id = raw.get("cardId")
+    if isinstance(card_id, str) and card_id not in board.cards:
+        matches = [
+            c.id
+            for c in board.cards.values()
+            if c.title.strip().lower() == card_id.strip().lower()
+        ]
+        if len(matches) == 1:
+            raw["cardId"] = matches[0]
+    return raw
+
+
+def parse_actions(board: Board, raw_actions: list[Any]) -> list[Action]:
+    """Validates each action on its own, so one bad action does not lose the rest."""
+    actions: list[Action] = []
+    for raw in raw_actions:
+        try:
+            actions.append(ACTION.validate_python(resolve_ids(board, raw)))
+        except ValidationError:
+            pass
+    return actions
 
 
 def valid_actions(board: Board, actions: list[Action]) -> list[Action]:
@@ -113,6 +191,10 @@ def valid_actions(board: Board, actions: list[Action]) -> list[Action]:
 
 
 async def ask(request: ChatRequest) -> AssistantReply:
-    reply = await complete(build_messages(request))
-    reply.actions = valid_actions(request.board, reply.actions)
-    return reply
+    reply, raw_actions = await complete(build_messages(request))
+    actions = valid_actions(request.board, parse_actions(request.board, raw_actions))
+    skipped = len(raw_actions) - len(actions)
+    if skipped:
+        changes = "change" if skipped == 1 else "changes"
+        reply += f"\n\n({skipped} requested {changes} could not be applied.)"
+    return AssistantReply(reply=reply, actions=actions)

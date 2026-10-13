@@ -86,9 +86,101 @@ async def test_does_not_retry_non_transient_errors(monkeypatch):
         raise litellm.AuthenticationError("bad key", llm_provider="groq", model="m")
 
     monkeypatch.setattr(litellm, "acompletion", denied)
-    with pytest.raises(litellm.AuthenticationError):
+    with pytest.raises(assistant.KeyRejected):
         await assistant.ask(REQUEST)
     assert attempts == 1
+
+
+async def test_a_401_from_groq_means_the_key_was_rejected(monkeypatch):
+    # LiteLLM reports Groq's 401 as a BadRequestError carrying status 401.
+    async def denied(**_):
+        error = litellm.BadRequestError("Invalid API Key", "m", "groq")
+        error.status_code = 401
+        raise error
+
+    monkeypatch.setattr(litellm, "acompletion", denied)
+    with pytest.raises(assistant.KeyRejected):
+        await assistant.ask(REQUEST)
+
+
+async def test_retries_groq_json_validate_failed(monkeypatch):
+    attempts = 0
+
+    async def fake(**_):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise litellm.BadRequestError(
+                '{"error":{"code":"json_validate_failed"}}', "m", "groq"
+            )
+        return completion(reply())
+
+    monkeypatch.setattr(litellm, "acompletion", fake)
+    assert (await assistant.ask(REQUEST)).reply == "Done."
+    assert attempts == 2
+
+
+async def test_does_not_retry_other_bad_requests(monkeypatch):
+    attempts = 0
+
+    async def fake(**_):
+        nonlocal attempts
+        attempts += 1
+        raise litellm.BadRequestError("context too long", "m", "groq")
+
+    monkeypatch.setattr(litellm, "acompletion", fake)
+    with pytest.raises(litellm.BadRequestError):
+        await assistant.ask(REQUEST)
+    assert attempts == 1
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        '```json\n{"reply": "Hi", "actions": []}\n```',
+        'Sure! {"reply": "Hi", "actions": []} Anything else?',
+        '{"reply": " Hi ", "actions": null, "extra": 1}',
+    ],
+)
+def test_parses_json_wrapped_in_other_text(content):
+    assert assistant.parse_reply(content) == ("Hi", [])
+
+
+@pytest.mark.parametrize("content", [None, "", "no json", "[1, 2]", '{"actions": []}'])
+def test_rejects_replies_without_a_message(content):
+    with pytest.raises(assistant.InvalidReply):
+        assistant.parse_reply(content)
+
+
+def test_defaults_the_message_when_only_actions_are_sent():
+    action = {"type": "delete_card", "cardId": "c1"}
+    assert assistant.parse_reply(json.dumps({"actions": [action]})) == (
+        "Done.",
+        [action],
+    )
+
+
+async def test_keeps_valid_actions_and_reports_the_rest(monkeypatch):
+    answer = reply(
+        actions=[
+            {"type": "move_card", "cardId": "Write docs", "columnId": "to do"},
+            {"type": "add_card", "columnId": "todo", "title": "No details"},
+            {"type": "rename_column", "columnId": "review", "name": "x" * 61},
+            {"type": "add_column", "name": "Blocked"},
+            {"type": "delete_card", "cardId": "ghost"},
+            "not an action",
+        ]
+    )
+
+    async def fake(**_):
+        return completion(answer)
+
+    monkeypatch.setattr(litellm, "acompletion", fake)
+    result = await assistant.ask(REQUEST)
+    assert [a.model_dump(by_alias=True) for a in result.actions] == [
+        {"type": "move_card", "cardId": "c1", "columnId": "todo", "position": None}
+    ]
+    assert result.reply == "Done.\n\n(5 requested changes could not be applied.)"
 
 
 def test_waits_grow_exponentially_up_to_twenty_seconds(monkeypatch):

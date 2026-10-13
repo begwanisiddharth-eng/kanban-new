@@ -5,7 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 
-from .assistant import ask
+from .assistant import KeyRejected, ask
 from .models import AssistantReply, ChatRequest
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
@@ -28,6 +28,11 @@ async def chat(request: ChatRequest) -> AssistantReply:
         )
     try:
         return await ask(request)
+    except KeyRejected as error:
+        logger.error("Groq rejected the API key")
+        raise HTTPException(
+            503, "Groq rejected the API key. Check GROQ_API_KEY in the .env file."
+        ) from error
     except Exception as error:
         logger.exception("Chat request failed")
         raise HTTPException(

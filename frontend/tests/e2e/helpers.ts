@@ -110,3 +110,40 @@ export async function signOut(page: Page) {
   await chooseSignOut(page);
   await expect(page).toHaveURL(/\/signin$/);
 }
+
+const FAKE_GROQ = "http://127.0.0.1:3199";
+
+export type ModelStep = {
+  status?: number;
+  content?: unknown;
+  body?: unknown;
+  delayMs?: number;
+};
+
+/** Scripts the fake Groq server's answers to an exact user message. */
+export async function scriptModel(
+  page: Page,
+  message: string,
+  responses: ModelStep[],
+) {
+  const res = await page.request.post(`${FAKE_GROQ}/__script`, {
+    data: { message, responses },
+  });
+  expect(res.ok()).toBe(true);
+}
+
+/** The completion requests the chat service sent for a message. */
+export async function modelCalls(page: Page, message: string) {
+  const res = await page.request.get(`${FAKE_GROQ}/__calls`, {
+    params: { message },
+  });
+  return (await res.json()) as {
+    model: string;
+    messages: { role: string; content: string }[];
+    response_format?: unknown;
+  }[];
+}
+
+/** A unique message, so scripted answers never collide across parallel tests. */
+export const uniqueMessage = (text: string) =>
+  `${text} (${Date.now()}-${++counter})`;

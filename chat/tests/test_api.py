@@ -22,6 +22,18 @@ def test_needs_an_api_key(monkeypatch):
     assert "GROQ_API_KEY" in res.json()["detail"]
 
 
+def test_explains_a_rejected_key(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "wrong")
+
+    async def denied(**_):
+        raise litellm.AuthenticationError("bad key", llm_provider="groq", model="m")
+
+    monkeypatch.setattr(litellm, "acompletion", denied)
+    res = client.post("/chat", json=BODY)
+    assert res.status_code == 503
+    assert "Groq rejected the API key" in res.json()["detail"]
+
+
 def test_returns_reply_and_camel_case_actions(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "test")
     answer = {
@@ -47,9 +59,7 @@ def test_reports_failure_without_leaking_details(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "test")
 
     async def broken(**_):
-        raise litellm.AuthenticationError(
-            "secret detail", llm_provider="groq", model="m"
-        )
+        raise litellm.BadRequestError("secret detail", "m", "groq")
 
     monkeypatch.setattr(litellm, "acompletion", broken)
     res = client.post("/chat", json=BODY)
