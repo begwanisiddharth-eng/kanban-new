@@ -56,9 +56,10 @@ export function BoardApp({ email, boards: initialBoards }: BoardAppProps) {
           onChangePassword={() => setChangingPassword(true)}
         />
       </header>
-      <div className="board-area">
-        <Board key={boardId} />
-        <ChatPanel key={boardId} onExpired={session.expire} />
+      {/* Keyed so the board and its conversation reset on switching boards. */}
+      <div key={boardId} className="board-area">
+        <Board />
+        <ChatPanel onExpired={session.expire} />
       </div>
       <UnsavedChangesDialog
         open={session.unsaved.open}

@@ -1,6 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { cards, column, openBoard, save, saveButton } from "./helpers";
+import {
+  cards,
+  chooseSignOut,
+  column,
+  openBoard,
+  save,
+  saveButton,
+} from "./helpers";
 
 const discardButton = (page: Page) =>
   page.getByRole("button", { name: "Discard changes" });
@@ -131,11 +138,11 @@ test("creating a board with unsaved changes asks first", async ({ page }) => {
 test("signing out with unsaved changes asks first", async ({ page }) => {
   await openBoard(page);
   await makeChange(page);
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await chooseSignOut(page);
   await unsavedDialog(page).getByRole("button", { name: "Cancel" }).click();
   await expect(page).not.toHaveURL(/signin/);
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await chooseSignOut(page);
   await unsavedDialog(page)
     .getByRole("button", { name: "Discard changes" })
     .click();

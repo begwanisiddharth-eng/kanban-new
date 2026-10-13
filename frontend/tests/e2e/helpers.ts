@@ -77,6 +77,8 @@ export async function drag(
   target: Locator,
   offsetY = 0,
 ) {
+  await target.scrollIntoViewIfNeeded();
+  await source.scrollIntoViewIfNeeded();
   const from = (await source.boundingBox())!;
   const to = (await target.boundingBox())!;
   const x = to.x + to.width / 2;
@@ -98,7 +100,13 @@ export async function keyboardMove(page: Page, card: Locator, key: string) {
   await expect(live).toContainText("moved to");
 }
 
+/** Opens the account menu and chooses Sign out (no unsaved-changes prompt expected). */
+export async function chooseSignOut(page: Page) {
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+}
+
 export async function signOut(page: Page) {
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await chooseSignOut(page);
   await expect(page).toHaveURL(/\/signin$/);
 }

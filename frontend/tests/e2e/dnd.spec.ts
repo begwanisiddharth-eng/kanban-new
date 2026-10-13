@@ -11,6 +11,9 @@ import {
   save,
 } from "./helpers";
 
+// Large enough that every sample card is visible without scrolling a column.
+test.use({ viewport: { width: 1920, height: 1080 } });
+
 test("reorders a card within its column", async ({ page }) => {
   await openBoard(page);
   const [first, second, third] = await cardTitles(page, "Backlog");

@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { openBoard } from "./helpers";
+import { chooseSignOut, openBoard } from "./helpers";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 
@@ -48,7 +48,7 @@ test("unsaved changes dialog has no detectable accessibility violations", async 
   await page.getByRole("button", { name: "Rename column: Done" }).click();
   await page.getByRole("textbox", { name: "Column name" }).fill("Shipped");
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await chooseSignOut(page);
   await expect(page.getByRole("alertdialog")).toBeVisible();
   expect(await violations(page)).toEqual([]);
 });

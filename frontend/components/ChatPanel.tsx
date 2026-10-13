@@ -29,8 +29,8 @@ export function ChatPanel({ onExpired }: { onExpired: () => void }) {
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-navy text-sm font-semibold">Board assistant</h2>
-          <p className="text-navy/70 truncate text-xs">
-            Changes it makes stay unsaved until you Save.
+          <p className="text-navy/70 text-xs">
+            Its changes stay unsaved until you Save.
           </p>
         </div>
         <Button

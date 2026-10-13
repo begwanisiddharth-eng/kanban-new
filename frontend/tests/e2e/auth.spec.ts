@@ -58,7 +58,8 @@ test("an existing user can sign out and sign back in", async ({ page }) => {
   await expect(page.getByText("Incorrect email or password.")).toBeVisible();
 
   await signIn(page, email);
-  await expect(page.getByText(email)).toBeVisible();
+  await page.getByRole("button", { name: "Account" }).click();
+  await expect(page.getByRole("menu")).toContainText(email);
 });
 
 test("signed-in users skip the sign-in page", async ({ page }) => {

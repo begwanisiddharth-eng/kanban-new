@@ -1,6 +1,6 @@
 "use client";
 
-import { closestCorners, DndContext, DragOverlay } from "@dnd-kit/core";
+import { DndContext, DragOverlay } from "@dnd-kit/core";
 
 import { useBoardDnd } from "@/hooks/useBoardDnd";
 import { CardBody } from "./CardBody";
@@ -13,7 +13,7 @@ export function Board() {
     <DndContext
       id="board"
       sensors={dnd.sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={dnd.collisionDetection}
       accessibility={{ announcements: dnd.announcements }}
       onDragStart={dnd.onDragStart}
       onDragOver={dnd.onDragOver}

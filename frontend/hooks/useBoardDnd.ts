@@ -1,11 +1,16 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  closestCorners,
+  getFirstCollision,
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
+  pointerWithin,
+  rectIntersection,
   type Announcements,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -27,6 +32,47 @@ export function useBoardDnd() {
   const moveCard = useBoardStore((s) => s.moveCard);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [preview, setPreview] = useState<Columns | null>(null);
+
+  const lastOverId = useRef<string | null>(null);
+  const movedToNewColumn = useRef(false);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      movedToNewColumn.current = false;
+    });
+  }, [preview]);
+
+  // Based on dnd-kit's multiple-containers example: right after a card moves
+  // to another column its rects are stale, so keep the previous target for a
+  // frame instead of bouncing the card back, which would loop forever.
+  const collisionDetection: CollisionDetection = useCallback(
+    (args) => {
+      const cols = preview ?? columns;
+      const pointer = pointerWithin(args);
+      // Between columns a pointer is over nothing: keep the last target, or
+      // the overlay straddling two columns makes the card bounce between them.
+      // Keyboard drags have no pointer and use the overlay's rect instead.
+      const hits = args.pointerCoordinates ? pointer : rectIntersection(args);
+      let overId = getFirstCollision(hits, "id");
+      if (overId != null) {
+        const column = cols.find((c) => c.id === overId);
+        if (column && column.cardIds.length > 0) {
+          overId =
+            closestCorners({
+              ...args,
+              droppableContainers: args.droppableContainers.filter((d) =>
+                column.cardIds.includes(String(d.id)),
+              ),
+            })[0]?.id ?? overId;
+        }
+        lastOverId.current = String(overId);
+        return [{ id: overId }];
+      }
+      if (movedToNewColumn.current) lastOverId.current = activeId;
+      return lastOverId.current ? [{ id: lastOverId.current }] : [];
+    },
+    [activeId, columns, preview],
+  );
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -56,6 +102,7 @@ export function useBoardDnd() {
       const from = findColumn(cols, activeCard);
       const to = findColumn(cols, String(over.id));
       if (!from || !to || from.id === to.id) return cols;
+      movedToNewColumn.current = true;
       const overIndex = to.cardIds.indexOf(String(over.id));
       const translated = active.rect.current.translated;
       const below =
@@ -114,6 +161,7 @@ export function useBoardDnd() {
     columns: preview ?? columns,
     activeCard: activeId ? cards[activeId] : null,
     sensors,
+    collisionDetection,
     announcements,
     onDragStart,
     onDragOver,
