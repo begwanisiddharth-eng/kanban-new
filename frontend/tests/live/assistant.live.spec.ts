@@ -115,3 +115,28 @@ test("tells the user to save instead of claiming it saved", async ({
   expect(reply).toMatch(/Save/);
   expect(reply.toLowerCase()).not.toMatch(/(have|has|i've|been) saved/);
 });
+
+test("refuses a column name over 60 characters without claiming it", async ({
+  page,
+}) => {
+  const reply = await ask(
+    page,
+    "Rename the Review column to 'Waiting for review by the design team, the product owner and the legal department'",
+  );
+  await expect(column(page, "Review")).toBeVisible();
+  expect(reply.toLowerCase()).toMatch(/60|too long|shorter/);
+  expect(reply.toLowerCase()).not.toMatch(
+    /has been renamed|i('ve| have) renamed/,
+  );
+});
+
+test("talks about cards by title, not id", async ({ page }) => {
+  const reply = await ask(
+    page,
+    "Move the card at position 2 in Backlog to Done",
+  );
+  await expect
+    .poll(() => cardTitles(page, "Done"))
+    .toContain("Audit accessibility of settings page");
+  expect(reply).not.toMatch(/backlog-\d|done-\d|in-progress-\d/);
+});
