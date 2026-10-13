@@ -49,4 +49,7 @@ test("renames a column using only the keyboard", async ({ page }) => {
   await page.keyboard.type("Next up");
   await page.keyboard.press("Enter");
   await expect(column(page, "Next up")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Rename column: Next up" }),
+  ).toBeFocused();
 });
