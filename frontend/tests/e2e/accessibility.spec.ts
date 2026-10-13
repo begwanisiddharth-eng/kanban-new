@@ -33,6 +33,26 @@ test("card dialog has no detectable accessibility violations", async ({
   expect(await violations(page)).toEqual([]);
 });
 
+test("sign-in page has no detectable accessibility violations", async ({
+  page,
+}) => {
+  await page.goto("/signin");
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  expect(await violations(page)).toEqual([]);
+});
+
+test("unsaved changes dialog has no detectable accessibility violations", async ({
+  page,
+}) => {
+  await openBoard(page);
+  await page.getByRole("button", { name: "Rename column: Done" }).click();
+  await page.getByRole("textbox", { name: "Column name" }).fill("Shipped");
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  expect(await violations(page)).toEqual([]);
+});
+
 test("focus is visible on cards and controls", async ({ page }) => {
   await openBoard(page);
   await page.keyboard.press("Tab");

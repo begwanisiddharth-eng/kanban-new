@@ -1,10 +1,53 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
+import { sampleBoardData } from "../fixtures/sampleBoard";
+
 export const COLUMNS = ["Backlog", "To Do", "In Progress", "Review", "Done"];
 
-export async function openBoard(page: Page) {
-  await page.goto("/");
+let counter = 0;
+
+export const uniqueEmail = () =>
+  `user-${Date.now()}-${process.pid}-${++counter}@example.com`;
+
+export const PASSWORD = "password123";
+
+/** Signs up a new user, who lands on their empty first board. */
+export async function signUp(page: Page, email = uniqueEmail()) {
+  await page.goto("/signup");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByRole("region")).toHaveCount(5);
+  return email;
+}
+
+export async function signIn(page: Page, email: string) {
+  await page.goto("/signin");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("region")).toHaveCount(5);
+}
+
+/** Signs up a new user whose first board is saved with the sample cards. */
+export async function openBoard(page: Page) {
+  const email = await signUp(page);
+  const [board] = await (await page.request.get("/api/boards")).json();
+  const res = await page.request.put(`/api/boards/${board.id}`, {
+    data: sampleBoardData(),
+  });
+  expect(res.status()).toBe(204);
+  await page.reload();
+  await expect(page.getByRole("region")).toHaveCount(5);
+  return email;
+}
+
+export const saveButton = (page: Page) =>
+  page.getByRole("button", { name: "Save", exact: true });
+
+export async function save(page: Page) {
+  await saveButton(page).click();
+  await expect(page.getByText("All changes saved")).toBeVisible();
 }
 
 export const column = (page: Page, name: string) =>
@@ -53,4 +96,9 @@ export async function keyboardMove(page: Page, card: Locator, key: string) {
   await expect(live).toContainText("Picked up card");
   await page.keyboard.press(key);
   await expect(live).toContainText("moved to");
+}
+
+export async function signOut(page: Page) {
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/signin$/);
 }

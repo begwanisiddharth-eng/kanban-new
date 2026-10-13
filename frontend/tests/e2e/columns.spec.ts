@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { column, openBoard } from "./helpers";
+import { column, openBoard, save } from "./helpers";
 
 test("renames a column inline and keeps it after reload", async ({ page }) => {
   await openBoard(page);
@@ -12,6 +12,7 @@ test("renames a column inline and keeps it after reload", async ({ page }) => {
   await input.fill("Doing");
   await input.press("Enter");
   await expect(column(page, "Doing")).toBeVisible();
+  await save(page);
   await page.reload();
   await expect(column(page, "Doing")).toBeVisible();
 });
