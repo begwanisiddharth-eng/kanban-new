@@ -24,3 +24,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.tsbuildinfo
+
+# local database (keep the data/ directory itself)
+data/*
+!data/.gitkeep
