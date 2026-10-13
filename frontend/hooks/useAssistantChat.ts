@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api, ApiError, isSessionExpired } from "@/lib/api";
 import { applyAssistantActions } from "@/lib/assistantActions";
@@ -26,6 +26,15 @@ export function useAssistantChat(onExpired: () => void) {
   const store = useBoardStoreApi();
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [pending, setPending] = useState(false);
+  // The panel remounts per board; a reply that arrives after leaving the
+  // board must not touch the next one, which shares the same store.
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   async function send(text: string) {
     const content = text.trim();
@@ -36,12 +45,14 @@ export function useAssistantChat(onExpired: () => void) {
     setPending(true);
     try {
       const reply = await api.chat(selectBoardData(store.getState()), history);
+      if (!mounted.current) return;
       const changes = applyAssistantActions(store.getState, reply.actions);
       setEntries((list) => [
         ...list,
         { role: "assistant", content: reply.reply, changes },
       ]);
     } catch (error) {
+      if (!mounted.current) return;
       if (isSessionExpired(error)) return onExpired();
       setEntries((list) => [
         ...list,

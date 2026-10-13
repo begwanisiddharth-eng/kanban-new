@@ -102,4 +102,20 @@ describe("ChatPanel", () => {
     );
     expect(within(log).queryByText("Summary here")).toBeNull();
   });
+
+  it("ignores a reply that arrives after the panel is gone", async () => {
+    let answer!: (reply: { reply: string; actions: [] }) => void;
+    chat.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const { user, input, state, unmount } = setup();
+    await user.type(input, "Delete everything{Enter}");
+    const before = JSON.stringify(state().cards);
+    unmount();
+    chat.mock.calls.length = 0;
+    answer({
+      reply: "Deleted.",
+      actions: [{ type: "delete_card", cardId: "todo-1" }] as never,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(JSON.stringify(state().cards)).toBe(before);
+  });
 });
