@@ -28,7 +28,7 @@ export function ColumnTitle({ column }: { column: Column }) {
           if (e.key === "Enter") commit();
           if (e.key === "Escape") setDraft(null);
         }}
-        className="h-8 px-2 text-sm font-semibold"
+        className="-ml-2 h-7 w-[calc(100%+0.5rem)] px-2 text-sm font-semibold md:text-sm"
       />
     );
   }
@@ -37,7 +37,7 @@ export function ColumnTitle({ column }: { column: Column }) {
     <h2>
       <button
         type="button"
-        className="text-navy hover:bg-surface/70 focus-visible:ring-ring/50 -mx-2 w-[calc(100%+1rem)] truncate rounded-md px-2 py-1 text-left text-sm font-semibold tracking-tight transition-colors outline-none focus-visible:ring-[3px]"
+        className="text-navy hover:bg-surface/70 focus-visible:ring-ring/50 -ml-2 w-[calc(100%+0.5rem)] truncate rounded-md px-2 py-1 text-left text-sm font-semibold tracking-tight transition-colors outline-none focus-visible:ring-[3px]"
         title="Rename column"
         aria-label={`Rename column: ${column.name}`}
         onClick={() => setDraft(column.name)}

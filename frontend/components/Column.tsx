@@ -49,7 +49,10 @@ export function Column({ column }: { column: ColumnType }) {
         items={column.cardIds}
         strategy={verticalListSortingStrategy}
       >
-        <ul ref={setNodeRef} className="flex min-h-16 flex-col gap-2.5">
+        <ul
+          ref={setNodeRef}
+          className="empty:border-border empty:before:text-muted flex min-h-16 flex-col gap-2.5 empty:min-h-28 empty:items-center empty:justify-center empty:rounded-xl empty:border-2 empty:border-dashed empty:before:text-sm empty:before:content-['No_cards_yet']"
+        >
           {column.cardIds.map((id) => (
             <Card key={id} card={cards[id]} />
           ))}
