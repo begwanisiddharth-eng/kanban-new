@@ -29,7 +29,7 @@ export function Card({ card }: { card: CardType }) {
   } = useSortable({ id: card.id, attributes: { role: "listitem" } });
 
   const actions = (
-    <div className="-mt-1 -mr-2 flex shrink-0 gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
+    <div className="bg-surface/95 ring-border absolute top-2 right-2 flex gap-0.5 rounded-lg p-0.5 opacity-0 shadow-sm ring-1 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
       <Button
         variant="ghost"
         size="icon"

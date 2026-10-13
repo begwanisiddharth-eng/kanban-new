@@ -28,5 +28,5 @@
 }
 
 @utility board-grid {
-  @apply grid auto-cols-[minmax(17rem,1fr)] grid-flow-col items-start gap-4 overflow-x-auto px-6 pb-8 lg:px-10;
+  @apply grid snap-x snap-mandatory scroll-px-6 auto-cols-[min(85vw,18rem)] grid-flow-col items-start gap-4 overflow-x-auto px-6 pb-8 md:snap-none md:auto-cols-[minmax(15.5rem,1fr)] lg:px-10;
 }
