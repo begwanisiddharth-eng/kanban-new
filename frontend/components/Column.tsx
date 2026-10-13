@@ -10,7 +10,7 @@ import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useBoardStore } from "@/store/boardStore";
+import { useBoardStore } from "@/store/BoardStoreProvider";
 import type { Column as ColumnType } from "@/types/board";
 import { Card } from "./Card";
 import { CardEditor } from "./CardEditor";

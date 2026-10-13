@@ -1,21 +1,15 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { useBoardStore } from "@/store/boardStore";
-import { createSeedBoard } from "@/store/seedData";
-import { Board } from "./Board";
+import { renderWithBoard } from "@/tests/renderBoard";
 
 const TITLE = "Redesign pricing page";
-
-beforeEach(() => {
-  useBoardStore.setState(createSeedBoard());
-});
 
 describe("Card", () => {
   it("edits title and details", async () => {
     const user = userEvent.setup();
-    render(<Board />);
+    renderWithBoard();
     await user.click(
       await screen.findByRole("button", { name: `Edit card: ${TITLE}` }),
     );
@@ -33,22 +27,20 @@ describe("Card", () => {
 
   it("discards edits on cancel", async () => {
     const user = userEvent.setup();
-    render(<Board />);
+    const { state } = renderWithBoard();
     await user.click(
       await screen.findByRole("button", { name: `Edit card: ${TITLE}` }),
     );
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByLabelText("Details"), " extra");
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    const card = Object.values(useBoardStore.getState().cards).find(
-      (c) => c.title === TITLE,
-    );
+    const card = Object.values(state().cards).find((c) => c.title === TITLE);
     expect(card?.details).not.toContain("extra");
   });
 
   it("deletes only after confirmation", async () => {
     const user = userEvent.setup();
-    render(<Board />);
+    renderWithBoard();
     const remove = await screen.findByRole("button", {
       name: `Delete card: ${TITLE}`,
     });

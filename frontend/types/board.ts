@@ -6,3 +6,7 @@ export type Board = {
   columns: [Column, Column, Column, Column, Column];
   cards: Record<string, Card>;
 };
+
+export type BoardSummary = { id: string; name: string };
+
+export type SavedBoard = BoardSummary & { data: Board };

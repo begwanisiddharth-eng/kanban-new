@@ -1,40 +1,32 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { useBoardStore } from "@/store/boardStore";
-import { createSeedBoard } from "@/store/seedData";
-import { Board } from "./Board";
-
-const columnName = (i: number) => useBoardStore.getState().columns[i].name;
-
-beforeEach(() => {
-  useBoardStore.setState(createSeedBoard());
-});
+import { renderWithBoard } from "@/tests/renderBoard";
 
 describe("Column", () => {
   it("renames a column inline with Enter", async () => {
     const user = userEvent.setup();
-    render(<Board />);
+    const { state } = renderWithBoard();
     await user.click(
       await screen.findByRole("button", { name: "Rename column: To Do" }),
     );
     const input = screen.getByRole("textbox", { name: "Column name" });
     await user.clear(input);
     await user.type(input, "Next up{Enter}");
-    expect(columnName(1)).toBe("Next up");
+    expect(state().columns[1].name).toBe("Next up");
     expect(screen.getByRole("region", { name: "Next up" })).toBeInTheDocument();
   });
 
   it("keeps the old name when cleared or cancelled", async () => {
     const user = userEvent.setup();
-    render(<Board />);
+    const { state } = renderWithBoard();
     await user.click(
       await screen.findByRole("button", { name: "Rename column: Review" }),
     );
     await user.clear(screen.getByRole("textbox", { name: "Column name" }));
     await user.keyboard("{Enter}");
-    expect(columnName(3)).toBe("Review");
+    expect(state().columns[3].name).toBe("Review");
 
     await user.click(
       screen.getByRole("button", { name: "Rename column: Review" }),
@@ -43,12 +35,12 @@ describe("Column", () => {
       screen.getByRole("textbox", { name: "Column name" }),
       "Typo{Escape}",
     );
-    expect(columnName(3)).toBe("Review");
+    expect(state().columns[3].name).toBe("Review");
   });
 
   it("adds a card at the bottom of the column", async () => {
     const user = userEvent.setup();
-    render(<Board />);
+    renderWithBoard();
     await user.click(
       await screen.findByRole("button", { name: "Add card to Done" }),
     );

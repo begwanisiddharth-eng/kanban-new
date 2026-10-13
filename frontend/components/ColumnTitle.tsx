@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
-import { useBoardStore } from "@/store/boardStore";
+import { useBoardStore } from "@/store/BoardStoreProvider";
 import type { Column } from "@/types/board";
 
 export function ColumnTitle({ column }: { column: Column }) {

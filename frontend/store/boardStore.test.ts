@@ -1,34 +1,28 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { STORAGE_KEY, useBoardStore } from "./boardStore";
-import { COLUMN_IDS, createSeedBoard } from "./seedData";
+import { sampleBoard } from "@/tests/fixtures/sampleBoard";
+import {
+  createBoardStore,
+  selectBoardData,
+  selectIsDirty,
+  type BoardStore,
+} from "./boardStore";
 
-const state = () => useBoardStore.getState();
+let store: BoardStore;
+const state = () => store.getState();
 const column = (id: string) => state().columns.find((c) => c.id === id)!;
+const dirty = () => selectIsDirty(state());
 
 beforeEach(() => {
-  localStorage.clear();
-  useBoardStore.setState(createSeedBoard());
+  store = createBoardStore(sampleBoard());
 });
 
-describe("seed data", () => {
-  it("has five default columns with 2-4 cards each", () => {
-    const board = createSeedBoard();
-    expect(board.columns.map((c) => c.name)).toEqual([
-      "Backlog",
-      "To Do",
-      "In Progress",
-      "Review",
-      "Done",
-    ]);
-    for (const c of board.columns) {
-      expect(c.cardIds.length).toBeGreaterThanOrEqual(2);
-      expect(c.cardIds.length).toBeLessThanOrEqual(4);
-      for (const id of c.cardIds) {
-        expect(board.cards[id].title).not.toBe("");
-        expect(board.cards[id].details).not.toBe("");
-      }
-    }
+describe("initial state", () => {
+  it("loads the given board and starts clean", () => {
+    expect(state().boardId).toBe("board-1");
+    expect(state().name).toBe("Sample board");
+    expect(selectBoardData(state())).toEqual(sampleBoard().data);
+    expect(dirty()).toBe(false);
   });
 });
 
@@ -36,11 +30,13 @@ describe("renameColumn", () => {
   it("renames and trims", () => {
     state().renameColumn("todo", "  Next up  ");
     expect(column("todo").name).toBe("Next up");
+    expect(dirty()).toBe(true);
   });
 
   it("ignores blank names", () => {
     state().renameColumn("todo", "   ");
     expect(column("todo").name).toBe("To Do");
+    expect(dirty()).toBe(false);
   });
 });
 
@@ -48,9 +44,11 @@ describe("addCard", () => {
   it("appends a trimmed card to the column", () => {
     state().addCard("review", " New title ", " Some details ");
     const ids = column("review").cardIds;
-    const card = state().cards[ids[ids.length - 1]];
-    expect(card).toMatchObject({ title: "New title", details: "Some details" });
     expect(ids).toHaveLength(3);
+    expect(state().cards[ids[2]]).toMatchObject({
+      title: "New title",
+      details: "Some details",
+    });
   });
 
   it("rejects a blank title or details", () => {
@@ -64,79 +62,95 @@ describe("addCard", () => {
 
 describe("updateCard", () => {
   it("updates title and details", () => {
-    const id = column("backlog").cardIds[0];
-    state().updateCard(id, "Edited", "Edited details");
-    expect(state().cards[id]).toEqual({
-      id,
+    state().updateCard("backlog-1", "Edited", "Edited details");
+    expect(state().cards["backlog-1"]).toEqual({
+      id: "backlog-1",
       title: "Edited",
       details: "Edited details",
     });
   });
 
   it("rejects blank values", () => {
-    const id = column("backlog").cardIds[0];
-    const before = state().cards[id];
-    state().updateCard(id, "", "x");
-    state().updateCard(id, "x", "  ");
-    expect(state().cards[id]).toBe(before);
+    const before = state().cards["backlog-1"];
+    state().updateCard("backlog-1", "", "x");
+    state().updateCard("backlog-1", "x", "  ");
+    expect(state().cards["backlog-1"]).toBe(before);
   });
 });
 
 describe("deleteCard", () => {
   it("removes the card and its reference", () => {
-    const id = column("done").cardIds[1];
-    state().deleteCard(id);
-    expect(state().cards[id]).toBeUndefined();
-    expect(column("done").cardIds).not.toContain(id);
-    expect(column("done").cardIds).toHaveLength(2);
+    state().deleteCard("done-2");
+    expect(state().cards["done-2"]).toBeUndefined();
+    expect(column("done").cardIds).toEqual(["done-1", "done-3"]);
   });
 });
 
 describe("moveCard", () => {
   it("reorders within a column", () => {
-    const [a, b, c] = column("backlog").cardIds;
-    state().moveCard(a, "backlog", 2);
-    expect(column("backlog").cardIds).toEqual([b, c, a]);
+    state().moveCard("backlog-1", "backlog", 2);
+    expect(column("backlog").cardIds).toEqual([
+      "backlog-2",
+      "backlog-3",
+      "backlog-1",
+    ]);
   });
 
   it("moves to a position in another column", () => {
-    const id = column("backlog").cardIds[0];
-    const [x, y] = column("review").cardIds;
-    state().moveCard(id, "review", 1);
-    expect(column("review").cardIds).toEqual([x, id, y]);
-    expect(column("backlog").cardIds).not.toContain(id);
+    state().moveCard("backlog-1", "review", 1);
+    expect(column("review").cardIds).toEqual([
+      "review-1",
+      "backlog-1",
+      "review-2",
+    ]);
+    expect(column("backlog").cardIds).not.toContain("backlog-1");
   });
 
   it("moves into an empty column", () => {
-    for (const id of column("review").cardIds) state().deleteCard(id);
-    const id = column("todo").cardIds[0];
-    state().moveCard(id, "review", 0);
-    expect(column("review").cardIds).toEqual([id]);
+    state().deleteCard("review-1");
+    state().deleteCard("review-2");
+    state().moveCard("todo-1", "review", 0);
+    expect(column("review").cardIds).toEqual(["todo-1"]);
   });
 
-  it("keeps exactly five columns", () => {
-    state().moveCard(column("todo").cardIds[0], "done", 0);
-    expect(state().columns.map((c) => c.id)).toEqual([...COLUMN_IDS]);
+  it("is not a change when a card is dropped where it was", () => {
+    state().moveCard("todo-2", "todo", 1);
+    expect(dirty()).toBe(false);
   });
 });
 
-describe("persistence", () => {
-  it("saves board data under the storage key", () => {
+describe("save tracking", () => {
+  it("markSaved records the saved data", () => {
     state().renameColumn("done", "Shipped");
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(saved.state.columns[4].name).toBe("Shipped");
-    expect(Object.keys(saved.state)).toEqual(["columns", "cards"]);
+    const data = selectBoardData(state());
+    state().addCard("done", "After save started", "Still unsaved");
+    state().markSaved(data);
+    expect(dirty()).toBe(true);
+    state().markSaved(selectBoardData(state()));
+    expect(dirty()).toBe(false);
   });
 
-  it("restores a saved board on rehydrate", async () => {
-    const saved = createSeedBoard();
-    saved.columns[0].name = "Ideas";
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ state: saved, version: 0 }),
-    );
-    await useBoardStore.persist.rehydrate();
+  it("is clean again when an edit is undone by hand", () => {
+    state().renameColumn("done", "Shipped");
+    state().renameColumn("done", "Done");
+    expect(dirty()).toBe(false);
+  });
+
+  it("revert restores the last saved data", () => {
+    state().deleteCard("backlog-1");
+    state().renameColumn("todo", "Next");
+    state().revert();
+    expect(selectBoardData(state())).toEqual(sampleBoard().data);
+    expect(dirty()).toBe(false);
+  });
+
+  it("load replaces the board and its saved state", () => {
+    state().deleteCard("backlog-1");
+    const other = { ...sampleBoard(), id: "board-2", name: "Other" };
+    other.data.columns[0].name = "Ideas";
+    state().load(other);
+    expect(state()).toMatchObject({ boardId: "board-2", name: "Other" });
     expect(column("backlog").name).toBe("Ideas");
-    expect(state().cards).toEqual(saved.cards);
+    expect(dirty()).toBe(false);
   });
 });

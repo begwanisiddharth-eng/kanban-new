@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
-import { useBoardStore } from "@/store/boardStore";
+import { useBoardStore } from "@/store/BoardStoreProvider";
 import type { Board } from "@/types/board";
 
 type Columns = Board["columns"];
