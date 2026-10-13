@@ -75,14 +75,16 @@ type Board = { columns: [Column, Column, Column, Column, Column]; cards: Record<
 
 ```
 <project root>/
-  AGENTS.md
+  AGENTS.md, README.md, PLAN.md, .gitignore
   frontend/
-    app/            layout.tsx, page.tsx, globals.css (Tailwind + theme tokens)
-    components/     Board, Column, Card, CardEditor, ConfirmDialog
-    components/ui/  shadcn/ui components
-    store/          boardStore.ts (Zustand), seedData.ts
+    app/            layout.tsx, page.tsx, globals.css (Tailwind + theme tokens), icon.svg
+    components/     Board, Column, ColumnTitle, Card, CardBody, CardEditor, CardForm, ConfirmDialog (+ *.test.tsx)
+    components/ui/  shadcn/ui components (button, dialog, alert-dialog, input, textarea, label)
+    hooks/          useBoardDnd.ts (sensors, drag preview state, screen reader announcements)
+    lib/            utils.ts (`cn`)
+    store/          boardStore.ts (Zustand), seedData.ts, boardStore.test.ts
     types/          board.ts
-    tests/e2e/      Playwright specs
+    tests/e2e/      Playwright specs and helpers
 ```
 
 **Commands**
@@ -90,10 +92,23 @@ type Board = { columns: [Column, Column, Column, Column, Column]; cards: Record<
 Run all commands from `frontend/`:
 
 - `npm run dev` starts the dev server
-- `npm run build` builds the static export
+- `npm run build` builds the static export into `out/`
+- `npm start` serves `out/` (port 3000)
 - `npm test` runs unit tests
-- `npm run test:e2e` runs Playwright tests
-- `npm run lint` runs ESLint and Prettier checks
+- `npm run test:e2e` builds, serves on port 3100 and runs Playwright tests
+- `npm run lint` runs ESLint and Prettier checks; `npm run format` fixes formatting
+
+**Implementation notes**
+
+- Store actions trim input and ignore a blank title, details or column name; the UI also blocks blank input (Save disabled, rename reverts).
+- The store uses `persist` with `skipHydration`; `Board` rehydrates in an effect and shows a skeleton until then, avoiding hydration mismatches in the static export.
+- During a drag, `useBoardDnd` keeps a local preview of the columns and commits once with `moveCard` on drop, so a cancelled drag (Escape) leaves the store untouched.
+- Mouse drags start after 6px, touch drags after a 200ms press; keyboard drags use Space/Enter, arrow keys and Escape.
+- The drag overlay tilt is applied to an inner element. Rotating the measured overlay node inflates its rect and breaks keyboard moves between columns.
+- Dialogs are rendered as siblings of a card's `<li>`, not inside it, so key events in the dialog never reach the drag listeners.
+- shadcn/ui components were added as source by hand (the registry was unreachable from the build environment); add new ones with `npx shadcn add` when it is reachable.
+- `@playwright/test` is pinned to match the installed Chromium; bump it together with `npx playwright install`.
+- The accessibility spec runs axe-core (WCAG 2.1 AA) and excludes `.text-muted` from the contrast rule only, per the color scheme note below.
 
 **Design**: simple but elegant. Generous whitespace, rounded cards with soft shadows, one clean sans-serif font (Inter via `next/font`), subtle hover and drag animations.
 
@@ -169,6 +184,10 @@ Code must be typed, tested, accessible and consistent with the conventions below
 - No commented-out code or unused files committed.
 
 
+
+---
+
+The sections below are the original brief. Where they differ from the spec above, the spec above wins (in particular, the board is persisted in localStorage).
 
 ## Business Requirements
 

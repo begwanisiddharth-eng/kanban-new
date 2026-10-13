@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build output
+.next/
+out/
+build/
+
+# testing
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# env files
+.env*
+
+# logs
+*.log
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.tsbuildinfo
