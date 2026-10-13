@@ -16,7 +16,7 @@ function answer(messages) {
   let match;
   if (/summari[sz]e/i.test(text))
     return { reply: `This board has ${cards.length} cards.`, actions: [] };
-  if ((match = text.match(/^move (.+) to (.+)$/i))) {
+  if ((match = text.match(/^move (.+?) to (.+)$/i))) {
     const card = cards.find(
       (c) => c.title.toLowerCase() === match[1].toLowerCase(),
     );
@@ -26,7 +26,7 @@ function answer(messages) {
       actions: [{ type: "move_card", cardId: card.id, columnId: target.id }],
     };
   }
-  if ((match = text.match(/^add (.+) to (.+)$/i)))
+  if ((match = text.match(/^add (.+?) to (.+)$/i)))
     return {
       reply: "Added it.",
       actions: [
@@ -52,6 +52,13 @@ createServer((req, res) => {
       res.writeHead(503, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: { message: "Over capacity" } }));
     }
+    let content;
+    try {
+      content = JSON.stringify(answer(messages));
+    } catch (error) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: { message: String(error) } }));
+    }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify({
@@ -59,13 +66,14 @@ createServer((req, res) => {
         object: "chat.completion",
         created: Math.floor(Date.now() / 1000),
         model,
+        service_tier: "on_demand",
         choices: [
           {
             index: 0,
             finish_reason: "stop",
             message: {
               role: "assistant",
-              content: JSON.stringify(answer(messages)),
+              content,
             },
           },
         ],
