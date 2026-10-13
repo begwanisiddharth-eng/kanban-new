@@ -33,7 +33,9 @@ export function ChatMessageList({
       role="log"
       aria-label="Conversation"
       aria-live="polite"
-      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4"
+      // Focusable so keyboard users can scroll back through the conversation.
+      tabIndex={0}
+      className="focus-visible:ring-ring/50 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 outline-none focus-visible:ring-[3px] focus-visible:ring-inset"
     >
       {entries.length === 0 && (
         <div className="m-auto flex flex-col items-center gap-3 text-center">
