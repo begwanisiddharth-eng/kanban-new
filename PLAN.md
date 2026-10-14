@@ -135,8 +135,8 @@ Direct `ask()` calls, the built app through its API as a signed-in user, and a l
 - [x] Round 1: "Add a card..." (a panel suggestion) asked for details instead of adding; replies used Markdown shown as literal asterisks; 429s from the 8,000 tokens/minute limit were retried too early. Fixed in the prompt, a server-side Markdown strip and retry waits that follow Groq's "try again in Xs". Live suite 7/8, then 10/10
 - [x] Round 2: adds 3/3, plain text, Save reminders; 10 users at once all answered (1.2-33 s); prompt injection in a card refused. Fixed: a claimed rename the 60-character limit then dropped, and internal ids in replies
 - [x] Round 3: all 24 earlier prompts correct. Fixed: a 213-card board was retried for 18 s then "try again" (now an immediate "too large" message, and a 12% smaller prompt); wrong card counts in long conversations (counts now sent with the board: 14/16 right, was about 2 in 3); the daily 200,000-token cap waited about 100 s then said "try again" (now 0.6 s and "try again in about N minutes")
-- [ ] Counting in long conversations is still wrong about 1 time in 8; sending the board after the history instead was not measured because the daily cap ran out
-- [ ] Live suite not re-run after the round 3 changes (daily cap); run `npm run test:live` once the quota resets
+- [x] Superseded by Phase 8: Groq (`gpt-oss-120b`) was dropped for OpenAI's `gpt-4o-mini`, which is not known to share the remaining counting issue below. Not re-measured against Groq.
+  - Counting in long conversations was still wrong about 1 time in 8 on Groq; sending the board after the history instead was never measured (the daily cap ran out first).
 
 # Phase 8: gpt-4o-mini and column management
 
@@ -148,4 +148,17 @@ Decisions: the assistant calls OpenAI directly (`openai/gpt-4o-mini`, `OPENAI_AP
 - [x] Assistant `add_column`/`remove_column`; actions checked against the board as earlier actions leave it, so one reply can add a column and fill it
 - [x] Two rounds of E2E testing; findings in REVIEW.md
 - [x] Totals: backend 36, frontend 62, chat 42, Playwright 127
-- [ ] Live run against gpt-4o-mini: needs `OPENAI_API_KEY` and `api.openai.com` in the environment's allowed domains, then `npm run test:live`
+- [x] Live run against gpt-4o-mini: done in Phase 9, once an environment with `OPENAI_API_KEY` and network access to `api.openai.com` was available
+
+# Phase 9: Full review and fixes
+
+A full codebase review plus live-model testing on 14 October 2026, with `OPENAI_API_KEY` and `api.openai.com` access available for the first time. Findings and live-testing detail are in `REVIEW.md`; this phase tracks the fixes.
+
+- [x] Full read-through of `backend/`, `chat/` and `frontend/`; all unit, lint and e2e (fake-model) suites re-run clean (backend 36, frontend 62, chat 42, Playwright e2e 127)
+- [x] Live-tested the real assistant directly (curl against a running backend + chat service) across the scenarios the live Playwright suite scripts: plain questions, multi-action replies, the 5-column limit, chained remove/add/fill-by-name, a prompt-injection attempt embedded in a card, ambiguous requests, the 60-character name limit, and "remind to Save, never claim saved" — all correct
+- [x] **Fixed:** `ChangePasswordDialog.test.tsx`'s password-mismatch test was flaky under the full suite (a React 19 form-action timing race); now awaits the alert instead of asserting synchronously. Confirmed stable over repeated full-suite runs.
+- [x] **Fixed:** `npm run test:live` silently skipped all 10 tests and exited 0, because `playwright.live.config.ts` never loaded the root `.env`, so `process.env.OPENAI_API_KEY` was unset in the test-runner process even though the servers it spawns loaded it themselves. The config now loads `.env` itself (via `process.loadEnvFile`, `__dirname`-based since this file runs as CommonJS). Confirmed: the suite now actually calls the real model (9/10 passed; see below for the one new, unrelated finding).
+- [x] **Fixed:** sign-in had a timing side-channel — it skipped the password hash entirely for an unknown email, which could reveal whether an email was registered. `verifyPassword` now always runs, against a fixed dummy hash when no account is found, so the response time is the same either way.
+- [x] **Fixed:** `MAX_BOARDS` was a bare literal `3` duplicated in `backend/src/boards.ts` and `frontend/hooks/useBoardSession.ts` with nothing tying them together. Each now carries a comment pointing at the other, matching how `MIN_COLUMNS`/`MAX_COLUMNS` are already cross-referenced.
+- [x] `AGENTS.md` rewritten to drop the superseded original brief it carried at the bottom; `PLAN.md` (this file) and `README.md` brought up to date.
+- [ ] **New finding, not fixed (test fixture, not an app bug):** with the live suite now actually running, `assistant.live.spec.ts`'s "adds a card from the suggestion" test fails consistently (2/2). The seed board already has a `To Do` card titled "Write release notes for v2.4"; asked to add a card "for writing release notes" via the suggestion chip, `gpt-4o-mini` recognises the near-duplicate and declines to add a second one, so the card count stays at 3 instead of reaching 4. This is reasonable model behaviour, not a defect — the fix, if wanted, is to change the live spec's seed data or suggestion wording so the two don't overlap.

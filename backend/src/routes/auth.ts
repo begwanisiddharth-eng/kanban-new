@@ -9,7 +9,7 @@ import {
 } from "../auth";
 import { createBoard } from "../boards";
 import { createEmptyBoard } from "../emptyBoard";
-import { hashPassword, verifyPassword } from "../password";
+import { DUMMY_HASH, hashPassword, verifyPassword } from "../password";
 import { changePasswordSchema, signInSchema, signUpSchema } from "../schema";
 import { createSession, deleteSession } from "../sessions";
 import {
@@ -52,10 +52,11 @@ authRouter.post("/signin", async (req, res) => {
     return;
   }
   const user = findUserByEmail(body.data.email);
-  if (
-    !user ||
-    !(await verifyPassword(body.data.password, user.password_hash))
-  ) {
+  const valid = await verifyPassword(
+    body.data.password,
+    user?.password_hash ?? DUMMY_HASH,
+  );
+  if (!user || !valid) {
     res.status(401).json({ error: "Incorrect email or password." });
     return;
   }

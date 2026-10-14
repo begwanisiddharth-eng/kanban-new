@@ -21,3 +21,7 @@ export async function verifyPassword(password: string, stored: string) {
   const [salt, key] = stored.split(":").map((s) => Buffer.from(s, "base64"));
   return timingSafeEqual(await derive(password, salt), key);
 }
+
+// Compared against when no account exists, so sign-in takes the same time
+// either way and a response's timing can't reveal whether an email is registered.
+export const DUMMY_HASH = await hashPassword(randomBytes(32).toString("hex"));

@@ -26,7 +26,9 @@ beforeEach(() => vi.clearAllMocks());
 describe("ChangePasswordDialog", () => {
   it("requires the new passwords to match", async () => {
     await fill("old-password", "new-password", "different1");
-    expect(screen.getByRole("alert")).toHaveTextContent("do not match");
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("do not match"),
+    );
     expect(api.changePassword).not.toHaveBeenCalled();
   });
 

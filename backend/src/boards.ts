@@ -1,6 +1,7 @@
 import { getDb } from "./db";
 import type { Board, BoardSummary, SavedBoard } from "./schema";
 
+// Also frontend/hooks/useBoardSession.ts; change both together.
 export const MAX_BOARDS = 3;
 
 export function listBoards(userId: string) {

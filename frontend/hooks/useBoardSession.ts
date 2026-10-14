@@ -6,6 +6,7 @@ import { selectBoardData, selectIsDirty } from "@/store/boardStore";
 import { useBoardStore, useBoardStoreApi } from "@/store/BoardStoreProvider";
 import type { BoardSummary, SavedBoard } from "@/types/board";
 
+// Also backend/src/boards.ts; change both together.
 export const MAX_BOARDS = 3;
 
 export function useBoardSession(initialBoards: BoardSummary[]) {

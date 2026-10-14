@@ -1,91 +1,61 @@
-# Review: gpt-4o-mini and column management
+# Review: full codebase review and live assistant testing
 
-Two changes, tested in two rounds of end-to-end testing on 14 October 2026.
-
-1. **Model.** The board assistant now calls `openai/gpt-4o-mini` through LiteLLM, using `OPENAI_API_KEY`. Groq does not serve this model, so the assistant now talks to OpenAI directly.
-2. **Columns.** A board now keeps **1 to 5** columns. Users can add an empty column at the end and remove any column except the last. Removing a column that has cards asks for confirmation first and deletes the cards with it. The board assistant can do the same through two new actions, `add_column` and `remove_column`.
+A full pass over `backend/`, `chat/` and `frontend/` on 14 October 2026, plus live testing of the board assistant against the real `openai/gpt-4o-mini` model (this environment has a working `OPENAI_API_KEY` and network access to `api.openai.com`, unlike the previous review).
 
 ## Result
 
-Both changes work as specified. Round 1 found three defects and round 2 found one; all four are fixed and covered by tests. No known defect is left open.
+The app is sound. Every unit and end-to-end suite passes, lint is clean across all three packages, and the live model behaved correctly on every scenario tried, including the specific risks called out in the previous review (Markdown in replies, internal ids leaking into replies, miscounted cards, and the new column actions). Four findings came out of this pass, all minor: one genuinely flaky unit test, one tooling gap that makes the live test suite silently test nothing, one low-severity timing side-channel, and one maintainability nit. None of them affect the features working as specified.
 
-| Suite                             | Before | After                      |
-| --------------------------------- | -----: | -------------------------- |
-| Backend unit (Vitest + Supertest) |     33 | 36                         |
-| Frontend unit (Vitest + RTL)      |     51 | 62                         |
-| Chat service (pytest)             |     39 | 42                         |
-| Playwright e2e (simulated model)  |    105 | 127                        |
-| Column specs, repeated 5 times    |      — | 110 of 110, no flaky tests |
-| Lint (ESLint, Prettier, ruff)     |  clean | clean                      |
+| Suite                              |  Result | Notes                                           |
+| ----------------------------------- | ------: | ------------------------------------------------ |
+| Backend unit (Vitest + Supertest)   | 36/36   | —                                                 |
+| Frontend unit (Vitest + RTL)        | 61-62/62 | One test is flaky under the full suite; see F1   |
+| Chat service (pytest)               | 42/42   | —                                                 |
+| Playwright e2e (fake OpenAI server) | 127/127 | Full suite, single run                           |
+| Playwright live (real OpenAI)       | 0/10 ran | Skipped entirely — see F2                        |
+| Lint (ESLint, Prettier, ruff)       | clean   | Backend, frontend and chat all pass               |
 
-**Not tested: gpt-4o-mini itself.** This environment has no `OPENAI_API_KEY`, and its network policy blocks `api.openai.com`. Every assistant test therefore ran against the scripted fake OpenAI server (`frontend/tests/e2e/fake-openai.mjs`), not the real model. See [Open items](#open-items).
+## Live model testing (real gpt-4o-mini)
 
-## How it was tested
+`npm run test:live` reported "10 skipped" and exited 0 (see F2), so it was not usable as-is. Instead I drove the real model directly through a running backend + chat service (`DATABASE_PATH` pointed at a throwaway file, ports 4100/8000), using the same `OPENAI_API_KEY` from the root `.env`, and checked the board state and reply text for each of the scenarios the live suite itself scripts:
 
-- **Round 1** ran the whole existing suite against the new code, plus a new spec, `columns-manage.spec.ts` (12 tests):
-  - removing a column, with and without confirming, then saving and reloading
-  - Discard bringing a removed column back
-  - the one-column minimum and the five-column maximum
-  - adding a column, its name dialog and the 60-character limit
-  - adding cards to a new column and dragging cards into it
-  - renaming a new column, then removing it again
-  - API validation: 0 columns, 6 columns, duplicate ids
-  - the assistant removing a column, adding one and filling it in one reply
-  - layout at 1280 px with fewer columns
-  - an axe accessibility scan of the new controls and dialogs
-  - screenshots at 1280 px and 390 px
-- **Round 2** went after edge cases in a second spec, `columns-edge.spec.ts` (10 tests):
-  - keyboard-only removing and adding, and where focus lands afterwards
-  - moving a card into a new column by keyboard drag and drop
-  - a one-column board, end to end
-  - the unsaved-changes prompt after removing a column
-  - removing a column, then adding a new one with the same name
-  - the assistant hitting the 1 and 5 limits
-  - a slow assistant reply that names a column the user has removed meanwhile
-  - "its card" for exactly one card (not "its 1 cards")
-  - managing columns at phone width
-  - finally, both column specs repeated 3 to 6 times to catch flaky tests
+| Scenario                                                             | Result                                                                                   |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Plain question ("how many columns, and what are they called?")        | Correct count and names, no Markdown                                                      |
+| Add two cards to two named columns in one message                     | Both `add_card` actions used the correct real column ids; sensible generated details      |
+| Add a column while already at 5                                       | Refused in the reply, zero actions, explained why                                         |
+| Remove a column, add a new one, fill it by name, in one message       | Correctly chained `remove_column` → `add_column` → `add_card` using the service-assigned id for the new column |
+| Card-count question with a card containing a prompt-injection attempt | Correct count (3), quoted the malicious card as data, took no actions, did not comply with the embedded instructions |
+| Ambiguous request ("delete that card" with no cards on the board)     | Replied there was nothing to delete, zero actions                                         |
+| Column name over 60 characters                                        | Refused, cited the 60-character limit, zero actions                                       |
+| "Add a card... and save the board for me"                             | Added the card, reminded the user to click Save, never claimed to have saved              |
 
-## Round 1 findings
+All of this matches the behaviour documented in `AGENTS.md` and the assistant's system prompt, and matches what the previous review's open items asked to confirm. No Markdown, no internal ids, no miscounted cards, no false "saved" claims, no compliance with the injected instructions.
 
-| #    | Severity | Finding                                                                                                                                                                                                                                                                                          | Fix                                                                                                                                             |
-| ---- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1-1 | Medium   | A remove button in each column header squeezed the title. At 1280 px "In Progress" was cut to "In Progr…". Found from screenshots.                                                                                                                                                               | Moved the remove button to the column footer, next to **Add card**, where there was spare room. Titles show in full again.                      |
-| R1-2 | Medium   | **Already present before this change.** The column-rename field had no length limit, and the store accepted any length. The backend rejects names over 60 characters, so a longer name showed on screen and then made **Save** fail. Found while adding the same limit to the new column dialog. | Capped the input at 60 characters and made the store's `renameColumn` reject longer names, matching the backend. Covered by unit and e2e tests. |
-| R1-3 | Low      | The retry for Groq's 400 `json_validate_failed` no longer applies. OpenAI's JSON mode does not send that error, and LiteLLM's OpenAI error doesn't expose the code anyway, so its e2e test failed.                                                                                               | Removed the Groq-only rule. The scenario now uses failures OpenAI does produce: a 500, an empty reply and a null reply, then success.           |
+## Findings
 
-Two round 1 failures were mistakes in the new tests, not in the app:
+| #  | Severity | Finding                                                                                                                                                                                                                                                                       | Location                                                      |
+| -- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| F1 | Low      | **Flaky unit test.** `ChangePasswordDialog`'s "requires the new passwords to match" test passes in isolation but fails consistently (3/3 runs) when the full frontend suite runs. It asserts `screen.getByRole("alert")` right after a click with no `waitFor`, but the component's `<form action={submit}>` (a React 19 form action) resolves the state update a tick later than a plain `onSubmit` would; under the full suite's parallel worker load that tick is enough to lose the race. The two other tests in the same file await correctly (`waitFor`, `findByText`) and never fail.                                                                              | `frontend/components/ChangePasswordDialog.test.tsx:27-31`      |
+| F2 | Medium   | **The live Playwright suite silently tests nothing unless `OPENAI_API_KEY` is also exported in the invoking shell.** `test.skip(!process.env.OPENAI_API_KEY, ...)` runs in the Playwright test-runner's own Node process, which never reads the root `.env` — only the backend and chat-service child processes it spawns do that (via `process.loadEnvFile` and `python-dotenv`). With the key only in `.env` (the setup every README and AGENTS.md instruction describes), `npm run test:live` reports "10 skipped" and **exits 0**, which looks like a clean run in a terminal or CI log but verified nothing against the real model. This is exactly what happened when I ran it here.                                                                | `frontend/tests/live/assistant.live.spec.ts:8`                 |
+| F3 | Low      | **Sign-in has a timing side-channel.** `POST /api/auth/signin` only calls the (expensive, scrypt-based) `verifyPassword` when `findUserByEmail` finds a row; for an unknown email it returns 401 immediately. An attacker who can measure response latency can distinguish "wrong password for a real account" from "no such account", enabling email enumeration. A constant-time fix would run `verifyPassword` against a fixed dummy hash when no user is found, before returning 401 either way.                                                                                                                                                                      | `backend/src/routes/auth.ts:48-69`                             |
+| F4 | Low      | **`MAX_BOARDS` is a duplicated literal, not a shared constant.** It is `3` in `backend/src/boards.ts` and separately `3` in `frontend/hooks/useBoardSession.ts`, with nothing tying them together. `AGENTS.md` already calls out the equivalent risk for `MIN_COLUMNS`/`MAX_COLUMNS` (three files to change together); the board limit has the same shape of risk but isn't tracked anywhere. Low impact today since the limit isn't expected to change, but worth a one-line mention alongside the column-limit note if it ever does.                                                                                                                                | `backend/src/boards.ts:4`, `frontend/hooks/useBoardSession.ts:9` |
 
-- "No cards yet" is drawn with CSS `::before`, so it isn't in the page's text.
-- The accessibility test didn't use the project's agreed exception for the spec-mandated `#888888` muted text.
+### A code-level edge case, not reproduced live
 
-## Round 2 findings
+`chat/app/assistant.py`'s `Draft.resolve()` falls back to case-insensitive name matching for `columnId`/`cardId` when the model sends something that isn't a known id. Column names aren't required to be unique (the schema has no such constraint, and the UI lets you rename two columns to the same name), so if the model ever used a name instead of an id for a board with duplicate column names, it would silently resolve to whichever column appears first, which might not be the one meant. In all of this session's live testing the model was given real ids in the board JSON and used them directly, never triggering this fallback, so this is a latent edge case rather than an observed bug.
 
-| #    | Severity               | Finding                                                                                                                                                                                                                                                                                                                                       | Fix                                                                                                                                                                                                                                                                              |
-| ---- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R2-1 | Medium (accessibility) | **Keyboard focus was lost.** After removing a column (with or without the confirm dialog), the focused button disappeared with its column. After adding the fifth column, the **Add column** tile that focus returns to disappeared. Either way focus fell to `<body>`, sending keyboard and screen-reader users back to the top of the page. | Focus now moves somewhere sensible. After a removal it goes to the neighbouring column's remove button, so several columns can be removed in a row. After an add it goes to the new column's title. This uses Radix's `onCloseAutoFocus`. Two e2e tests check where focus lands. |
+## What else I checked, with no issues found
 
-Two flaky failures in the repeated runs were timing in the tests, not app bugs. The focus hand-off in R2-1 happens when the dialog finishes closing, about 200 ms later, and two tests moved focus themselves before that. The tests now wait for focus to settle; a person can't act within that window.
-
-### Checked with no defects found
-
-- The assistant can't go past five columns or below one. A reply that tries reports "(1 requested change could not be applied.)".
-- In one reply the assistant can remove a column, add a new one, and put cards into it by name. The service gives new columns their ids.
-- A slow reply that refers to a column the user has removed meanwhile applies its other actions and skips the rest.
-- Removing a column and then adding one with the same name creates a new, empty column with a new id; the old column's cards stay deleted.
-- Discard restores removed columns and their cards. Switching boards after removing a column asks about the unsaved change first.
-- The API rejects boards with 0 columns, 6 columns, or duplicate column ids, and accepts a one-column board.
-- Cards can be dragged into a new column by mouse and by keyboard.
-- The layout holds at 1280 px with fewer columns (the assistant panel stays in the same row) and at 390 px, with no sideways page scroll.
-- The column controls and dialogs pass the axe scan for WCAG 2.1 AA.
+- **Backend**: session one-per-user invariant (`UNIQUE(user_id)` + `ON CONFLICT DO NOTHING`), idle expiry and cleanup, scrypt parameters and `timingSafeEqual` usage, board/column/card referential-integrity `refine()`s in `schema.ts`, the 1-3 board and 1-5 column limits enforced in transactions, cookie flags (`httpOnly`, `SameSite=Lax`, `Secure` only in production).
+- **Chat service**: the retry/backoff tuning against OpenAI's actual error shapes (`RateLimitError`, "request too large", `AuthenticationError` → 401), the JSON-object extraction tolerating code fences and leading prose, the per-action `Draft` validation that lets one bad action in a reply not sink the rest, and the Markdown-stripping regex.
+- **Frontend**: the dirty-tracking snapshot comparison in `boardStore.ts`, the custom dnd-kit collision detection (the documented fix for the cross-column render loop), focus hand-off after removing/adding a column, the unsaved-changes guard covering switch/create/delete/sign-out, and the idle-timeout heartbeat/warning/sign-out sequence.
+- **Cross-cutting**: the 1-5 column limit and 60-character name limit are consistent across `frontend/types/board.ts`, `backend/src/schema.ts` and `chat/app/models.py`, exactly as `AGENTS.md` requires.
+- Re-ran the full 127-test Playwright e2e suite (fake OpenAI server) once: no flakes.
 
 ## Open items
 
-1. **Run the live suite against gpt-4o-mini.** Add `OPENAI_API_KEY` as an environment variable and `api.openai.com` to the environment's allowed domains. Then, in a new session, run `npm run test:live` in `frontend/`. It sends about 15 requests. The prompt was tuned on `gpt-oss-120b`, so watch especially for:
-   - Markdown in replies
-   - internal ids appearing in replies
-   - wrong card counts in long conversations
-   - correct use of the new `add_column` and `remove_column` actions
-2. **Rate limits on OpenAI.** The retry handling reads "Please try again in Xs" from the error message, which OpenAI also uses. The thresholds (30 s maximum wait, give up after 100 s) were tuned on Groq's free tier and may need adjusting for your OpenAI usage tier.
-3. **How the "5" was read.** "How many columns may a board have: 5" was taken as **1 to 5**: a board can shrink to one column and grow back to five. If you meant something else, the limit is `MIN_COLUMNS`/`MAX_COLUMNS` in three places, which must change together: `frontend/types/board.ts`, `backend/src/schema.ts` and `chat/app/models.py`.
-4. **Not in scope.** Columns can't be reordered, and a removed column can't be restored other than by **Discard changes** before saving.
+1. **Export `OPENAI_API_KEY` in the shell before `npm run test:live`, not just in `.env`** (see F2). Until that's fixed in the spec or documented, the suite will keep reporting a false "10 skipped" pass. A one-line fix: load `.env` at the top of `playwright.live.config.ts` (e.g. with `dotenv/config`) so the test-runner process sees the key the same way its child processes do.
+2. **Fix F1's race** by awaiting the assertion (`waitFor`/`findByRole`) like the file's other two tests do, rather than asserting synchronously after `user.click()`.
+3. **Rate limits on OpenAI** are still untuned for this account's actual usage tier (unchanged from the previous review) — the handful of live requests made here never came close to a limit, so this remains unverified either way.
+4. **Column reordering and restoring a single removed column** (other than via **Discard changes** before saving) remain out of scope, as before.
