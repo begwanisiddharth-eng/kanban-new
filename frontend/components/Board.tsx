@@ -45,7 +45,7 @@ export function Board() {
       <AddColumnDialog
         open={adding}
         onOpenChange={setAdding}
-        onAdd={(name) => addColumn(name)}
+        onAdd={addColumn}
       />
       <DragOverlay>
         {dnd.activeCard && (

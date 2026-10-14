@@ -2,7 +2,7 @@
 
 ## Business Requirements
 
-The app is a Kanban MVP with user accounts. Each user has up to 3 boards; every board has exactly 5 renamable columns and cards that can be added, edited, deleted and dragged between columns. Changes are saved explicitly. A board assistant (an LLM chat panel) can answer questions about the open board and edit it.
+The app is a Kanban MVP with user accounts. Each user has up to 3 boards; every board has 1 to 5 columns that can be renamed, added and removed, and cards that can be added, edited, deleted and dragged between columns. Changes are saved explicitly. A board assistant (an LLM chat panel) can answer questions about the open board and edit it.
 
 **Accounts**
 
@@ -19,7 +19,8 @@ The app is a Kanban MVP with user accounts. Each user has up to 3 boards; every 
 - A user can create a new board (a name is required, up to 60 characters). New boards are empty and have the default columns.
 - A user can switch between their boards with a board switcher. The open board is kept in the URL, so a reload reopens it.
 - A user can delete a board after confirmation, but never their only board.
-- Every board always has exactly 5 columns. Columns cannot be added, removed or reordered.
+- A board has 1 to 5 columns. A new board starts with the five defaults. **Add column** (a tile after the last column, shown only below five) adds an empty column at the end; the remove button in a column's footer removes it with its cards, after a confirm when it has any, and is disabled on the last column. Columns cannot be reordered. Adding and removing are unsaved edits like any other; names are 1 to 60 characters.
+- After removing a column, keyboard focus moves to the neighbouring column's remove button; after adding one, to the new column's title (the tile may be gone).
 - Each column has a name that the user can rename inline. A column name cannot be empty.
 - Default column names: Backlog, To Do, In Progress, Review, Done.
 - There is no sample data. Boards start empty.
@@ -36,11 +37,11 @@ The app is a Kanban MVP with user accounts. Each user has up to 3 boards; every 
 
 **Board assistant**
 
-- A chat panel sits to the right of the five columns, about three quarters of the column height. On a maximized laptop browser (1280 px and wider) columns and panel share one row with no wrap; narrower screens scroll the columns and stack the panel below.
+- A chat panel sits to the right of the columns, about three quarters of the column height. On a maximized laptop browser (1280 px and wider) columns and panel share one row with no wrap; narrower screens scroll the columns and stack the panel below.
 - Columns have a fixed height and scroll their cards; cards have a fixed height, clamping long titles and details.
-- The assistant sees the open board (including unsaved edits) and the conversation. It can add, edit, move and delete cards and rename columns. Its edits are applied as unsaved changes, exactly like the user's.
+- The assistant sees the open board (including unsaved edits) and the conversation. It can add, edit, move and delete cards, and add, rename and remove columns, within the same 1-to-5 limit. Its edits are applied as unsaved changes, exactly like the user's.
 - Each board has its own conversation, kept in memory only and cleared on board switch, reload or **Clear conversation**.
-- The model is fixed: `groq/openai/gpt-oss-120b` through LiteLLM. Failed calls are retried with exponential backoff (tenacity).
+- The model is fixed: `openai/gpt-4o-mini` through LiteLLM, with `OPENAI_API_KEY`. Failed calls are retried with exponential backoff (tenacity).
 
 **Saving**
 
@@ -73,7 +74,7 @@ The project has four parts at the root: a client-rendered Next.js app in `fronte
 | Database         | SQLite via better-sqlite3; file `data/kanban.db` (override with `DATABASE_PATH`)                                                                           |
 | Auth             | scrypt password hashes; random session token in an httpOnly, SameSite=Lax cookie; only a SHA-256 of the token is stored; one session per user, 20 min idle |
 | Validation       | zod on every API input                                                                                                                                     |
-| Assistant        | Python 3.12+ with uv; FastAPI, LiteLLM (`groq/openai/gpt-oss-120b`, JSON mode), pydantic, tenacity; pytest and ruff                                        |
+| Assistant        | Python 3.12+ with uv; FastAPI, LiteLLM (`openai/gpt-4o-mini`, JSON mode), pydantic, tenacity; pytest and ruff                                              |
 | Language         | TypeScript (strict mode)                                                                                                                                   |
 | Styling          | Tailwind CSS v4, colors defined as theme tokens                                                                                                            |
 | UI components    | shadcn/ui (Radix UI primitives)                                                                                                                            |
@@ -122,7 +123,7 @@ SQLite tables: `users` (id, email, password_hash), `sessions` (id = token hash, 
 <project root>/
   AGENTS.md, CLAUDE.md, README.md, PLAN.md, .gitignore, package.json (scripts for both apps)
   data/             SQLite database (contents gitignored)
-  .env.example      keys for the root .env (GROQ_API_KEY; .env itself is gitignored)
+  .env.example      keys for the root .env (OPENAI_API_KEY; .env itself is gitignored)
   backend/
     src/            server.ts, app.ts, db.ts, auth.ts, password.ts, sessions.ts, users.ts, boards.ts, schema.ts, emptyBoard.ts
     src/routes/     auth.ts, boards.ts, chat.ts
@@ -141,7 +142,7 @@ SQLite tables: `users` (id, email, password_hash), `sessions` (id = token hash, 
     lib/            api.ts (typed API client), assistantActions.ts (applies assistant actions via store actions), utils.ts (`cn`)
     store/          boardStore.ts (Zustand store factory), BoardStoreProvider.tsx, boardStore.test.ts
     types/          board.ts, chat.ts
-    tests/          fixtures/ (sample board), renderBoard.tsx, e2e/ (Playwright specs, helpers, fake-groq.mjs)
+    tests/          fixtures/ (sample board), renderBoard.tsx, e2e/ (Playwright specs, helpers, fake-openai.mjs), live/ (specs against the real model)
 ```
 
 **Commands**
@@ -153,7 +154,7 @@ From the project root:
 - `npm run build` then `npm start` builds the frontend and serves the whole app from the backend on port 4000, with the chat service on 8000
 - `npm test`, `npm run lint` and `npm run test:e2e` run the checks for all three packages (pytest and ruff for `chat/`)
 
-Inside `backend/` or `frontend/`, `npm test`, `npm run lint` and `npm run format` work per package. `frontend/`'s `npm run test:e2e` builds the frontend and starts the backend on port 3100 with a throwaway database, the chat service on 3101 and a fake Groq server (`tests/e2e/fake-groq.mjs`) on 3199 via `GROQ_API_BASE`, so e2e never calls the real model. Specs script the fake's answers to an exact message (`scriptModel` in `helpers.ts`: status, content, raw body, delay) and read back the requests the service sent (`modelCalls`). `npm run test:live` (in `frontend/`) runs `tests/live/` against the real Groq API with `GROQ_API_KEY`, serially, checking the board rather than the wording; it is never part of `test:e2e`, and a full run uses about 15 requests. Inside `chat/`, run `uv run pytest` and `uv run ruff check .`.
+Inside `backend/` or `frontend/`, `npm test`, `npm run lint` and `npm run format` work per package. `frontend/`'s `npm run test:e2e` builds the frontend and starts the backend on port 3100 with a throwaway database, the chat service on 3101 and a fake OpenAI server (`tests/e2e/fake-openai.mjs`) on 3199 via `OPENAI_BASE_URL`, so e2e never calls the real model. Specs script the fake's answers to an exact message (`scriptModel` in `helpers.ts`: status, content, raw body, delay) and read back the requests the service sent (`modelCalls`). `npm run test:live` (in `frontend/`) runs `tests/live/` against the real OpenAI API with `OPENAI_API_KEY`, serially, checking the board rather than the wording; it is never part of `test:e2e`, and a full run uses about 15 requests. Inside `chat/`, run `uv run pytest` and `uv run ruff check .`.
 
 **Implementation notes**
 
@@ -167,12 +168,12 @@ Inside `backend/` or `frontend/`, `npm test`, `npm run lint` and `npm run format
 - Dialogs are rendered as siblings of a card's `<li>`, not inside it, so key events in the dialog never reach the drag listeners.
 - Sessions: every authenticated request refreshes `last_seen_at`; a session idle for 20 minutes is deleted on next use and no longer blocks sign-in. The cookie has no max-age. The client sends a heartbeat at most once a minute while the user is active, so typing or dragging without saving keeps the session alive.
 - Any 401 from the API sends the user to `/signin?reason=expired`; an idle timeout to `/signin?reason=timeout`.
-- The assistant replies in JSON mode. The service reads the first JSON object even inside a code fence or prose; a reply with no object, or no message and no actions, is retried like a transient error, as is Groq's 400 `json_validate_failed`. Each action is validated on its own (pydantic): a column name or unique card title is accepted in place of an id, and invalid actions or ones naming unknown cards or columns are dropped, with "(N requested changes could not be applied.)" added to the reply. The client applies the rest through store actions, so blank input is still rejected.
-- tenacity owns retries (exponential backoff with jitter, 1 to 20 s, but at least the wait Groq's "try again in Xs" asks for; 5 attempts, none started after 100 s, 45 s per request) so the service always answers inside the backend's 180 s timeout, which it reports as 504. LiteLLM is called with `num_retries=0` so retries do not multiply. Not retried: a rejected key (401, returns 503 naming `GROQ_API_KEY`), a request over the plan's per-minute token limit ("Request too large", returns 413) and a rate limit asking to wait over 30 s, such as the daily cap (returns 429 with when to try again). The backend passes 503, 413 and 429 on; other failures become 502.
+- The assistant replies in JSON mode. The service reads the first JSON object even inside a code fence or prose; a reply with no object, or no message and no actions, is retried like a transient error. Each action is validated on its own (pydantic) against the board as the earlier actions in the reply leave it: a column name or unique card title is accepted in place of an id, `add_column` gets its id from the service (so later actions can fill the new column by name), `remove_column` takes the column's cards with it, the 1-to-5 limit is enforced, and invalid actions or ones naming unknown cards or columns are dropped, with "(N requested changes could not be applied.)" added to the reply. The client applies the rest through store actions, so blank input is still rejected.
+- tenacity owns retries (exponential backoff with jitter, 1 to 20 s, but at least the wait a rate limit's "try again in Xs" asks for; 5 attempts, none started after 100 s, 45 s per request) so the service always answers inside the backend's 180 s timeout, which it reports as 504. LiteLLM is called with `num_retries=0` so retries do not multiply. Not retried: a rejected key (401, returns 503 naming `OPENAI_API_KEY`), a request over the plan's per-minute token limit ("Request too large", returns 413) and a rate limit asking to wait over 30 s, such as the daily cap (returns 429 with when to try again). The backend passes 503, 413 and 429 on; other failures become 502.
 - The prompt sends the board with cards nested in their columns (each id once) plus `cardCount` per column and `totalCards`, because the model miscounted in long conversations. It asks for plain text (leftover `**` and `#` are stripped), names rather than ids in replies, details written by the model when the user gives none, the 60-character column name limit, and a reminder to click Save instead of claiming a save.
-- Groq's free tier for `openai/gpt-oss-120b` allows 8,000 tokens a minute and 200,000 a day; a request is about 1,250 tokens on the sample board, so about 6 a minute and 160 a day. A board of roughly 190 cards or more no longer fits in one request on that tier.
+- The rate-limit handling above was tuned live on Groq's free tier (8,000 tokens a minute, 200,000 a day). OpenAI's limits depend on the account's usage tier. gpt-4o-mini has not yet been run live: it needs `OPENAI_API_KEY` and `api.openai.com` allowed.
 - A reply that arrives after the user switched boards is ignored: the board store is shared, and the chat panel is keyed by board. History sent to the API is the last 40 messages, starting at a question, each clipped to 4,000 characters.
-- Never commit API keys. `GROQ_API_KEY` belongs only in the root `.env`.
+- Never commit API keys. `OPENAI_API_KEY` belongs only in the root `.env`.
 - dnd-kit uses `pointerWithin` with a `rectIntersection` fallback and keeps the last target; the default `closestCorners` oscillated between columns and caused a render loop (React error #185).
 - The session cookie is `Secure` only when `NODE_ENV=production`; run production behind HTTPS.
 - shadcn/ui components were added as source by hand (the registry was unreachable from the build environment); add new ones with `npx shadcn add` when it is reachable.

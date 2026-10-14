@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,11 +14,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MAX_COLUMNS } from "@/types/board";
+import { focusColumn } from "./Column";
 
 type AddColumnDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (name: string) => void;
+  /** Adds the column and returns its id, or null if it was not added. */
+  onAdd: (name: string) => string | null;
 };
 
 export function AddColumnDialog({
@@ -27,6 +29,9 @@ export function AddColumnDialog({
   onAdd,
 }: AddColumnDialogProps) {
   const [name, setName] = useState("");
+  // The tile that opened the dialog is gone once the fifth column is added,
+  // so focus moves to the new column instead.
+  const added = useRef<string | null>(null);
 
   const close = () => {
     onOpenChange(false);
@@ -38,7 +43,14 @@ export function AddColumnDialog({
       open={open}
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
     >
-      <DialogContent>
+      <DialogContent
+        onCloseAutoFocus={(e) => {
+          if (!added.current) return;
+          e.preventDefault();
+          focusColumn(added.current, "title");
+          added.current = null;
+        }}
+      >
         <DialogHeader>
           <DialogTitle>New column</DialogTitle>
           <DialogDescription>
@@ -51,7 +63,7 @@ export function AddColumnDialog({
           onSubmit={(e) => {
             e.preventDefault();
             if (!name.trim()) return;
-            onAdd(name);
+            added.current = onAdd(name);
             close();
           }}
         >

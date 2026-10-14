@@ -137,3 +137,15 @@ Direct `ask()` calls, the built app through its API as a signed-in user, and a l
 - [x] Round 3: all 24 earlier prompts correct. Fixed: a 213-card board was retried for 18 s then "try again" (now an immediate "too large" message, and a 12% smaller prompt); wrong card counts in long conversations (counts now sent with the board: 14/16 right, was about 2 in 3); the daily 200,000-token cap waited about 100 s then said "try again" (now 0.6 s and "try again in about N minutes")
 - [ ] Counting in long conversations is still wrong about 1 time in 8; sending the board after the history instead was not measured because the daily cap ran out
 - [ ] Live suite not re-run after the round 3 changes (daily cap); run `npm run test:live` once the quota resets
+
+# Phase 8: gpt-4o-mini and column management
+
+Decisions: the assistant calls OpenAI directly (`openai/gpt-4o-mini`, `OPENAI_API_KEY`), since Groq does not serve that model. A board keeps 1 to 5 columns; removing a column deletes its cards after a confirm; the assistant can add and remove columns under the same rules.
+
+- [x] Model switched; e2e fake server now stands in for OpenAI (`OPENAI_BASE_URL`); Groq-only `json_validate_failed` retry removed
+- [x] Backend, chat service and client accept 1-5 columns with unique ids; store `addColumn`/`removeColumn`
+- [x] Add column tile and dialog; remove button in the column footer with confirm; disabled on the last column
+- [x] Assistant `add_column`/`remove_column`; actions checked against the board as earlier actions leave it, so one reply can add a column and fill it
+- [x] Two rounds of E2E testing; findings in REVIEW.md
+- [x] Totals: backend 36, frontend 62, chat 42, Playwright 127
+- [ ] Live run against gpt-4o-mini: needs `OPENAI_API_KEY` and `api.openai.com` in the environment's allowed domains, then `npm run test:live`
