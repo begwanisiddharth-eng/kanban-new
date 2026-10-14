@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 
 import { Input } from "@/components/ui/input";
-import { useBoardStore } from "@/store/boardStore";
+import { useBoardStore } from "@/store/BoardStoreProvider";
 import type { Column } from "@/types/board";
 
 export function ColumnTitle({ column }: { column: Column }) {
@@ -21,6 +21,7 @@ export function ColumnTitle({ column }: { column: Column }) {
       <Input
         aria-label="Column name"
         value={draft}
+        maxLength={60}
         autoFocus
         onFocus={(e) => e.target.select()}
         onChange={(e) => setDraft(e.target.value)}

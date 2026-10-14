@@ -1,5 +1,6 @@
-import type { Board, Card, Column } from "@/types/board";
+import type { Board, Card, Column, SavedBoard } from "../../types/board";
 
+// Former sample data, now used to seed boards in tests.
 const SEED: [string, [string, string][]][] = [
   [
     "Backlog",
@@ -80,7 +81,7 @@ const SEED: [string, [string, string][]][] = [
   ],
 ];
 
-export const COLUMN_IDS = [
+const COLUMN_IDS = [
   "backlog",
   "todo",
   "in-progress",
@@ -88,11 +89,11 @@ export const COLUMN_IDS = [
   "done",
 ] as const;
 
-export function createSeedBoard(): Board {
+export function sampleBoardData(): Board {
   const cards: Record<string, Card> = {};
   const columns = SEED.map(([name, seedCards], i): Column => {
-    const cardIds = seedCards.map(([title, details]) => {
-      const id = crypto.randomUUID();
+    const cardIds = seedCards.map(([title, details], j) => {
+      const id = `${COLUMN_IDS[i]}-${j + 1}`;
       cards[id] = { id, title, details };
       return id;
     });
@@ -100,3 +101,9 @@ export function createSeedBoard(): Board {
   }) as Board["columns"];
   return { columns, cards };
 }
+
+export const sampleBoard = (): SavedBoard => ({
+  id: "board-1",
+  name: "Sample board",
+  data: sampleBoardData(),
+});

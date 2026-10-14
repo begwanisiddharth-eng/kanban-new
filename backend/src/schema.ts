@@ -1,0 +1,78 @@
+import { z } from "zod";
+
+const text = z.string().trim().min(1);
+
+const column = z.object({
+  id: z.string().min(1),
+  name: text.max(60),
+  cardIds: z.array(z.string()),
+});
+
+const card = z.object({ id: z.string().min(1), title: text, details: text });
+
+export const MIN_COLUMNS = 1;
+export const MAX_COLUMNS = 5;
+
+export const boardSchema = z
+  .object({
+    columns: z.array(column).min(MIN_COLUMNS).max(MAX_COLUMNS),
+    cards: z.record(z.string(), card),
+  })
+  .refine(
+    ({ columns }) => new Set(columns.map((c) => c.id)).size === columns.length,
+    "Column ids must be unique",
+  )
+  .refine(({ columns, cards }) => {
+    const ids = columns.flatMap((c) => c.cardIds);
+    return (
+      ids.length === Object.keys(cards).length &&
+      new Set(ids).size === ids.length &&
+      ids.every((id) => cards[id]?.id === id)
+    );
+  }, "Every card must belong to exactly one column");
+
+export type Board = z.infer<typeof boardSchema>;
+export type BoardSummary = { id: string; name: string };
+export type SavedBoard = BoardSummary & { data: Board };
+
+export const boardNameSchema = z
+  .string()
+  .trim()
+  .min(1, { error: "Enter a board name." })
+  .max(60, { error: "Use 60 characters or fewer." });
+
+const email = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email({ error: "Enter a valid email address." }).max(254));
+
+const newPassword = z
+  .string()
+  .min(8, { error: "Use at least 8 characters for your password." })
+  .max(128, { error: "Use 128 characters or fewer for your password." });
+
+export const signUpSchema = z.object({ email, password: newPassword });
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, { error: "Enter your current password." }),
+  newPassword,
+});
+
+export const chatSchema = z.object({
+  board: boardSchema,
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().trim().min(1).max(4000),
+      }),
+    )
+    .min(1)
+    .max(40),
+});
+
+export const signInSchema = z.object({
+  email,
+  password: z.string().min(1, { error: "Enter your password." }),
+});

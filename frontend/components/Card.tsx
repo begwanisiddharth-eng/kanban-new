@@ -7,7 +7,7 @@ import { Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useBoardStore } from "@/store/boardStore";
+import { useBoardStore } from "@/store/BoardStoreProvider";
 import type { Card as CardType } from "@/types/board";
 import { CardBody } from "./CardBody";
 import { CardEditor } from "./CardEditor";

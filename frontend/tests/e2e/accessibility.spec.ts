@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { openBoard } from "./helpers";
+import { chooseSignOut, openBoard } from "./helpers";
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 
@@ -30,6 +30,26 @@ test("card dialog has no detectable accessibility violations", async ({
   await openBoard(page);
   await page.getByRole("button", { name: "Add card to Backlog" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  expect(await violations(page)).toEqual([]);
+});
+
+test("sign-in page has no detectable accessibility violations", async ({
+  page,
+}) => {
+  await page.goto("/signin");
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  expect(await violations(page)).toEqual([]);
+});
+
+test("unsaved changes dialog has no detectable accessibility violations", async ({
+  page,
+}) => {
+  await openBoard(page);
+  await page.getByRole("button", { name: "Rename column: Done" }).click();
+  await page.getByRole("textbox", { name: "Column name" }).fill("Shipped");
+  await page.keyboard.press("Enter");
+  await chooseSignOut(page);
+  await expect(page.getByRole("alertdialog")).toBeVisible();
   expect(await violations(page)).toEqual([]);
 });
 

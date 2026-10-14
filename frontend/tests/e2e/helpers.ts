@@ -1,10 +1,53 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
+import { sampleBoardData } from "../fixtures/sampleBoard";
+
 export const COLUMNS = ["Backlog", "To Do", "In Progress", "Review", "Done"];
 
-export async function openBoard(page: Page) {
-  await page.goto("/");
+let counter = 0;
+
+export const uniqueEmail = () =>
+  `user-${Date.now()}-${process.pid}-${++counter}@example.com`;
+
+export const PASSWORD = "password123";
+
+/** Signs up a new user, who lands on their empty first board. */
+export async function signUp(page: Page, email = uniqueEmail()) {
+  await page.goto("/signup");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByRole("region")).toHaveCount(5);
+  return email;
+}
+
+export async function signIn(page: Page, email: string) {
+  await page.goto("/signin");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("region")).toHaveCount(5);
+}
+
+/** Signs up a new user whose first board is saved with the sample cards. */
+export async function openBoard(page: Page) {
+  const email = await signUp(page);
+  const [board] = await (await page.request.get("/api/boards")).json();
+  const res = await page.request.put(`/api/boards/${board.id}`, {
+    data: sampleBoardData(),
+  });
+  expect(res.status()).toBe(204);
+  await page.reload();
+  await expect(page.getByRole("region")).toHaveCount(5);
+  return email;
+}
+
+export const saveButton = (page: Page) =>
+  page.getByRole("button", { name: "Save", exact: true });
+
+export async function save(page: Page) {
+  await saveButton(page).click();
+  await expect(page.getByText("All changes saved")).toBeVisible();
 }
 
 export const column = (page: Page, name: string) =>
@@ -34,6 +77,8 @@ export async function drag(
   target: Locator,
   offsetY = 0,
 ) {
+  await target.scrollIntoViewIfNeeded();
+  await source.scrollIntoViewIfNeeded();
   const from = (await source.boundingBox())!;
   const to = (await target.boundingBox())!;
   const x = to.x + to.width / 2;
@@ -54,3 +99,51 @@ export async function keyboardMove(page: Page, card: Locator, key: string) {
   await page.keyboard.press(key);
   await expect(live).toContainText("moved to");
 }
+
+/** Opens the account menu and chooses Sign out (no unsaved-changes prompt expected). */
+export async function chooseSignOut(page: Page) {
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+}
+
+export async function signOut(page: Page) {
+  await chooseSignOut(page);
+  await expect(page).toHaveURL(/\/signin$/);
+}
+
+const FAKE_OPENAI = "http://127.0.0.1:3199";
+
+export type ModelStep = {
+  status?: number;
+  content?: unknown;
+  body?: unknown;
+  delayMs?: number;
+};
+
+/** Scripts the fake OpenAI server's answers to an exact user message. */
+export async function scriptModel(
+  page: Page,
+  message: string,
+  responses: ModelStep[],
+) {
+  const res = await page.request.post(`${FAKE_OPENAI}/__script`, {
+    data: { message, responses },
+  });
+  expect(res.ok()).toBe(true);
+}
+
+/** The completion requests the chat service sent for a message. */
+export async function modelCalls(page: Page, message: string) {
+  const res = await page.request.get(`${FAKE_OPENAI}/__calls`, {
+    params: { message },
+  });
+  return (await res.json()) as {
+    model: string;
+    messages: { role: string; content: string }[];
+    response_format?: unknown;
+  }[];
+}
+
+/** A unique message, so scripted answers never collide across parallel tests. */
+export const uniqueMessage = (text: string) =>
+  `${text} (${Date.now()}-${++counter})`;

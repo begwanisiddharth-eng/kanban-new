@@ -8,7 +8,11 @@ import {
   drag,
   keyboardMove,
   openBoard,
+  save,
 } from "./helpers";
+
+// Large enough that every sample card is visible without scrolling a column.
+test.use({ viewport: { width: 1920, height: 1080 } });
 
 test("reorders a card within its column", async ({ page }) => {
   await openBoard(page);
@@ -78,7 +82,7 @@ test("Escape cancels a keyboard drag", async ({ page }) => {
   await expect.poll(() => cardTitles(page, "To Do")).toEqual(before);
 });
 
-test("card order survives a reload", async ({ page }) => {
+test("saved card order survives a reload", async ({ page }) => {
   await openBoard(page);
   await drag(
     page,
@@ -89,6 +93,7 @@ test("card order survives a reload", async ({ page }) => {
   await expect(cards(page, "Backlog")).toHaveCount(4);
   const backlog = await cardTitles(page, "Backlog");
   const done = await cardTitles(page, "Done");
+  await save(page);
   await page.reload();
   await expect.poll(() => cardTitles(page, "Backlog")).toEqual(backlog);
   expect(await cardTitles(page, "Done")).toEqual(done);

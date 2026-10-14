@@ -1,0 +1,32 @@
+[project]
+name = "kanban-chat"
+version = "0.1.0"
+description = "Board assistant for the Kanban app, backed by OpenAI via LiteLLM"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.143.0",
+    "litellm>=1.105.0",
+    "pydantic>=2.14.1",
+    "python-dotenv>=1.2.4",
+    "tenacity>=9.2.1",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.0",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]

@@ -18,6 +18,8 @@ type ConfirmDialogProps = {
   description: string;
   confirmLabel: string;
   onConfirm: () => void;
+  /** Where focus goes on close, when the trigger may no longer exist. */
+  onCloseAutoFocus?: (event: Event) => void;
 };
 
 export function ConfirmDialog({
@@ -27,10 +29,11 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   onConfirm,
+  onCloseAutoFocus,
 }: ConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
