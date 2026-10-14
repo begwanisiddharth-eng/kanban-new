@@ -1,4 +1,5 @@
 import type { BoardState } from "@/store/boardStore";
+import { MIN_COLUMNS } from "@/types/board";
 import type { AssistantAction } from "@/types/chat";
 
 /**
@@ -51,6 +52,24 @@ export function applyAssistantActions(
         if (!card) break;
         state.deleteCard(card.id);
         applied.push(`Deleted "${card.title}"`);
+        break;
+      }
+      case "add_column": {
+        if (!state.addColumn(action.name, action.columnId)) break;
+        applied.push(`Added column ${action.name.trim()}`);
+        break;
+      }
+      case "remove_column": {
+        const column = state.columns.find((c) => c.id === action.columnId);
+        if (!column || state.columns.length <= MIN_COLUMNS) break;
+        state.removeColumn(column.id);
+        const count = column.cardIds.length;
+        applied.push(
+          `Removed column ${column.name}` +
+            (count
+              ? ` and its ${count === 1 ? "card" : `${count} cards`}`
+              : ""),
+        );
         break;
       }
       case "rename_column": {

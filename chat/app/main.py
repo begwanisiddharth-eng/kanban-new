@@ -23,30 +23,30 @@ def health() -> dict[str, str]:
 
 @app.post("/chat", response_model=AssistantReply, response_model_by_alias=True)
 async def chat(request: ChatRequest) -> AssistantReply:
-    if not os.environ.get("GROQ_API_KEY"):
+    if not os.environ.get("OPENAI_API_KEY"):
         raise HTTPException(
-            503, "The assistant is not set up yet. Add GROQ_API_KEY to the .env file."
+            503, "The assistant is not set up yet. Add OPENAI_API_KEY to the .env file."
         )
     try:
         return await ask(request)
     except KeyRejected as error:
-        logger.error("Groq rejected the API key")
+        logger.error("OpenAI rejected the API key")
         raise HTTPException(
-            503, "Groq rejected the API key. Check GROQ_API_KEY in the .env file."
+            503, "OpenAI rejected the API key. Check OPENAI_API_KEY in the .env file."
         ) from error
     except UsageLimit as error:
         minutes = math.ceil(error.seconds / 60)
-        logger.error("Groq usage limit reached")
+        logger.error("OpenAI usage limit reached")
         raise HTTPException(
             429,
-            "The assistant has reached its Groq usage limit. "
+            "The assistant has reached its OpenAI usage limit. "
             f"Try again in about {minutes} minute{'s' if minutes > 1 else ''}.",
         ) from error
     except BoardTooLarge as error:
-        logger.error("Board too large for the Groq plan")
+        logger.error("Board too large for the OpenAI plan")
         raise HTTPException(
             413,
-            "This board is too large for the assistant on the current Groq plan. "
+            "This board is too large for the assistant on the current OpenAI plan. "
             "Try it on a smaller board.",
         ) from error
     except Exception as error:

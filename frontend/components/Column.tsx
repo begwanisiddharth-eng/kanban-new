@@ -6,20 +6,28 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useBoardStore } from "@/store/BoardStoreProvider";
-import type { Column as ColumnType } from "@/types/board";
+import { MIN_COLUMNS, type Column as ColumnType } from "@/types/board";
 import { Card } from "./Card";
 import { CardEditor } from "./CardEditor";
 import { ColumnTitle } from "./ColumnTitle";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 export function Column({ column }: { column: ColumnType }) {
   const cards = useBoardStore((s) => s.cards);
   const addCard = useBoardStore((s) => s.addCard);
+  const removeColumn = useBoardStore((s) => s.removeColumn);
+  const isLast = useBoardStore((s) => s.columns.length <= MIN_COLUMNS);
   const [adding, setAdding] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const count = column.cardIds.length;
+
+  // An empty column goes at once; one with cards asks first.
+  const remove = () => (count ? setConfirming(true) : removeColumn(column.id));
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
 
   return (
@@ -37,9 +45,9 @@ export function Column({ column }: { column: ColumnType }) {
           </div>
           <span
             className="bg-surface text-navy/70 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums"
-            aria-label={`${column.cardIds.length} cards`}
+            aria-label={`${count} cards`}
           >
-            {column.cardIds.length}
+            {count}
           </span>
         </div>
         <div className="bg-accent mt-2 h-0.5 w-10 rounded-full" />
@@ -58,20 +66,41 @@ export function Column({ column }: { column: ColumnType }) {
           ))}
         </ul>
       </SortableContext>
-      <Button
-        variant="ghost"
-        className="text-secondary hover:bg-secondary/10 hover:text-secondary mt-3 justify-start"
-        onClick={() => setAdding(true)}
-        aria-label={`Add card to ${column.name}`}
-      >
-        <Plus />
-        Add card
-      </Button>
+      <div className="mt-3 flex items-center gap-1">
+        <Button
+          variant="ghost"
+          className="text-secondary hover:bg-secondary/10 hover:text-secondary flex-1 justify-start"
+          onClick={() => setAdding(true)}
+          aria-label={`Add card to ${column.name}`}
+        >
+          <Plus />
+          Add card
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-navy/60 hover:text-destructive hover:bg-destructive/10"
+          aria-label={`Remove column: ${column.name}`}
+          title={isLast ? "A board needs at least one column" : "Remove column"}
+          disabled={isLast}
+          onClick={remove}
+        >
+          <Trash2 />
+        </Button>
+      </div>
       <CardEditor
         open={adding}
         onOpenChange={setAdding}
         heading={`New card in ${column.name}`}
         onSave={(title, details) => addCard(column.id, title, details)}
+      />
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Remove this column?"
+        description={`"${column.name}" and its ${count === 1 ? "card" : `${count} cards`} will be removed.`}
+        confirmLabel="Remove column"
+        onConfirm={() => removeColumn(column.id)}
       />
     </section>
   );

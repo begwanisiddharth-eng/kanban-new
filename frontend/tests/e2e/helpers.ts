@@ -111,7 +111,7 @@ export async function signOut(page: Page) {
   await expect(page).toHaveURL(/\/signin$/);
 }
 
-const FAKE_GROQ = "http://127.0.0.1:3199";
+const FAKE_OPENAI = "http://127.0.0.1:3199";
 
 export type ModelStep = {
   status?: number;
@@ -120,13 +120,13 @@ export type ModelStep = {
   delayMs?: number;
 };
 
-/** Scripts the fake Groq server's answers to an exact user message. */
+/** Scripts the fake OpenAI server's answers to an exact user message. */
 export async function scriptModel(
   page: Page,
   message: string,
   responses: ModelStep[],
 ) {
-  const res = await page.request.post(`${FAKE_GROQ}/__script`, {
+  const res = await page.request.post(`${FAKE_OPENAI}/__script`, {
     data: { message, responses },
   });
   expect(res.ok()).toBe(true);
@@ -134,7 +134,7 @@ export async function scriptModel(
 
 /** The completion requests the chat service sent for a message. */
 export async function modelCalls(page: Page, message: string) {
-  const res = await page.request.get(`${FAKE_GROQ}/__calls`, {
+  const res = await page.request.get(`${FAKE_OPENAI}/__calls`, {
     params: { message },
   });
   return (await res.json()) as {

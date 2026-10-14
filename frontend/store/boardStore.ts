@@ -1,9 +1,19 @@
 import { createStore } from "zustand";
 
-import type { Board, Card, SavedBoard } from "@/types/board";
+import {
+  MAX_COLUMNS,
+  MIN_COLUMNS,
+  type Board,
+  type Card,
+  type SavedBoard,
+} from "@/types/board";
 
 type BoardActions = {
   renameColumn: (columnId: string, name: string) => void;
+  /** Adds an empty column at the end; returns its id, or null at the limit. */
+  addColumn: (name: string, id?: string) => string | null;
+  /** Removes a column and its cards, unless it is the last one. */
+  removeColumn: (columnId: string) => void;
   addCard: (columnId: string, title: string, details: string) => void;
   updateCard: (cardId: string, title: string, details: string) => void;
   deleteCard: (cardId: string) => void;
@@ -18,6 +28,8 @@ export type BoardState = Board & {
   name: string;
   savedSnapshot: string;
 } & BoardActions;
+
+const MAX_COLUMN_NAME = 60;
 
 const snapshot = ({ columns, cards }: Board) =>
   JSON.stringify({ columns, cards });
@@ -38,7 +50,7 @@ function mapColumns(
   columns: Board["columns"],
   fn: (column: Board["columns"][number]) => Board["columns"][number],
 ) {
-  return columns.map(fn) as Board["columns"];
+  return columns.map(fn);
 }
 
 const loaded = (board: SavedBoard) => ({
@@ -49,18 +61,41 @@ const loaded = (board: SavedBoard) => ({
 });
 
 export const createBoardStore = (board: SavedBoard) =>
-  createStore<BoardState>()((set) => ({
+  createStore<BoardState>()((set, get) => ({
     ...loaded(board),
 
     renameColumn: (columnId, name) => {
       const trimmed = name.trim();
-      if (!trimmed) return;
+      if (!trimmed || trimmed.length > MAX_COLUMN_NAME) return;
       set((s) => ({
         columns: mapColumns(s.columns, (c) =>
           c.id === columnId ? { ...c, name: trimmed } : c,
         ),
       }));
     },
+
+    addColumn: (name, id = crypto.randomUUID()) => {
+      const trimmed = name.trim();
+      const { columns } = get();
+      if (
+        !trimmed ||
+        trimmed.length > MAX_COLUMN_NAME ||
+        columns.length >= MAX_COLUMNS ||
+        columns.some((c) => c.id === id)
+      )
+        return null;
+      set({ columns: [...columns, { id, name: trimmed, cardIds: [] }] });
+      return id;
+    },
+
+    removeColumn: (columnId) =>
+      set((s) => {
+        const column = s.columns.find((c) => c.id === columnId);
+        if (!column || s.columns.length <= MIN_COLUMNS) return s;
+        const cards = { ...s.cards };
+        for (const id of column.cardIds) delete cards[id];
+        return { cards, columns: s.columns.filter((c) => c !== column) };
+      }),
 
     addCard: (columnId, title, details) => {
       const fields = cleanCard(title, details);

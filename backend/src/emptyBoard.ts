@@ -16,7 +16,7 @@ export function createEmptyBoard(): Board {
       id,
       name,
       cardIds: [],
-    })) as Board["columns"],
+    })),
     cards: {},
   };
 }

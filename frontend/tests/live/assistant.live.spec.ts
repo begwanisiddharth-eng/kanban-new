@@ -5,7 +5,7 @@ import { cardTitles, column, openBoard, save } from "../e2e/helpers";
 // The board assistant against the real model. Assertions check the board,
 // not the model's wording, which varies from run to run.
 
-test.skip(!process.env.GROQ_API_KEY, "needs GROQ_API_KEY");
+test.skip(!process.env.OPENAI_API_KEY, "needs OPENAI_API_KEY");
 
 const panel = (page: Page) =>
   page.getByRole("complementary", { name: "Board assistant" });

@@ -248,11 +248,11 @@ describe("chat", () => {
 
   it("passes on chat service errors", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json({ detail: "Add GROQ_API_KEY." }, { status: 503 }),
+      Response.json({ detail: "Add OPENAI_API_KEY." }, { status: 503 }),
     );
     const { agent } = await signUp();
     const res = await agent.post("/api/chat").send(body()).expect(503);
-    expect(res.body.error).toBe("Add GROQ_API_KEY.");
+    expect(res.body.error).toBe("Add OPENAI_API_KEY.");
   });
 
   it("passes on the usage limit and board size statuses", async () => {

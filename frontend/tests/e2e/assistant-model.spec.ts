@@ -11,7 +11,7 @@ import {
 } from "./helpers";
 
 // How the board assistant copes with the shapes of output a real model
-// produces, using scripted answers from the fake Groq server.
+// produces, using scripted answers from the fake OpenAI server.
 
 const panel = (page: Page) =>
   page.getByRole("complementary", { name: "Board assistant" });
@@ -44,7 +44,7 @@ test("sends the fixed model, JSON mode and the board", async ({ page }) => {
   ]);
   await expect(log(page)).toContainText("Hello!");
   const [call] = await modelCalls(page, message);
-  expect(call.model).toBe("openai/gpt-oss-120b");
+  expect(call.model).toBe("gpt-4o-mini");
   expect(call.response_format).toEqual({ type: "json_object" });
   expect(call.messages[0].role).toBe("system");
   expect(call.messages[0].content).toContain('"id":"done-2"');
@@ -156,18 +156,15 @@ test("tolerates null and string fields the model sends", async ({ page }) => {
     ]);
 });
 
-test("retries when Groq cannot produce valid JSON", async ({ page }) => {
+test("retries server errors and empty replies", async ({ page }) => {
   test.setTimeout(60_000);
   await askScripted(page, "Summarise", [
     {
-      status: 400,
+      status: 500,
       body: {
         error: {
-          message:
-            "Failed to generate JSON. Please adjust your prompt. See 'failed_generation' for more details.",
-          type: "invalid_request_error",
-          code: "json_validate_failed",
-          failed_generation: "{reply: oops",
+          message: "The server had an error while processing your request.",
+          type: "server_error",
         },
       },
     },
@@ -209,7 +206,7 @@ test("explains a rejected API key without retrying", async ({ page }) => {
       },
     },
   ]);
-  await expect(log(page)).toContainText("Groq rejected the API key");
+  await expect(log(page)).toContainText("OpenAI rejected the API key");
   expect(await modelCalls(page, message)).toHaveLength(1);
   await expect(
     panel(page).getByRole("textbox", { name: "Message the assistant" }),

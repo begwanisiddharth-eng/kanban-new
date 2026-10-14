@@ -154,3 +154,57 @@ describe("save tracking", () => {
     expect(dirty()).toBe(false);
   });
 });
+
+describe("addColumn", () => {
+  it("adds an empty column at the end, up to five", () => {
+    state().removeColumn("review");
+    const id = state().addColumn("  Blocked ");
+    expect(state().columns.at(-1)).toEqual({
+      id,
+      name: "Blocked",
+      cardIds: [],
+    });
+    expect(dirty()).toBe(true);
+    expect(state().addColumn("Sixth")).toBeNull();
+    expect(state().columns).toHaveLength(5);
+  });
+
+  it("uses a given id once, and rejects blank or long names", () => {
+    state().removeColumn("review");
+    state().removeColumn("done");
+    expect(state().addColumn("Later", "col-1")).toBe("col-1");
+    expect(state().addColumn("Again", "col-1")).toBeNull();
+    expect(state().addColumn("   ")).toBeNull();
+    expect(state().addColumn("x".repeat(61))).toBeNull();
+    expect(state().columns).toHaveLength(4);
+  });
+});
+
+describe("removeColumn", () => {
+  it("removes the column and its cards", () => {
+    state().removeColumn("done");
+    expect(state().columns.map((c) => c.id)).not.toContain("done");
+    expect(state().cards["done-1"]).toBeUndefined();
+    expect(Object.keys(state().cards)).toHaveLength(10);
+    expect(dirty()).toBe(true);
+  });
+
+  it("keeps the last column", () => {
+    for (const id of ["backlog", "todo", "in-progress", "review", "done"])
+      state().removeColumn(id);
+    expect(state().columns.map((c) => c.id)).toEqual(["done"]);
+  });
+
+  it("is undone by revert", () => {
+    state().removeColumn("todo");
+    state().revert();
+    expect(selectBoardData(state())).toEqual(sampleBoard().data);
+  });
+});
+
+describe("renameColumn limits", () => {
+  it("ignores names over 60 characters", () => {
+    state().renameColumn("todo", "x".repeat(61));
+    expect(column("todo").name).toBe("To Do");
+  });
+});

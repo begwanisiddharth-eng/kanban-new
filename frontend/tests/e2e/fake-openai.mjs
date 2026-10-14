@@ -1,5 +1,5 @@
-// A stand-in for Groq's OpenAI-compatible API, used by the e2e tests through
-// GROQ_API_BASE. It answers a few phrasings deterministically and fails the
+// A stand-in for the OpenAI chat completions API, used by the e2e tests through
+// OPENAI_BASE_URL. It answers a few phrasings deterministically and fails the
 // first two calls of a "flaky" message so retries are exercised end to end.
 // Tests can also script the responses for an exact message with
 // POST /__script { message, responses: [{ status?, content?, body?, delayMs? }] }
@@ -7,7 +7,7 @@
 // GET /__calls?message=...
 import { createServer } from "node:http";
 
-const port = Number(process.env.FAKE_GROQ_PORT ?? 3199);
+const port = Number(process.env.FAKE_OPENAI_PORT ?? 3199);
 const failures = new Map();
 const scripts = new Map();
 const calls = new Map();
@@ -94,14 +94,14 @@ createServer((req, res) => {
   });
 }).listen(port, "127.0.0.1");
 
-// Shaped like a gpt-oss completion on Groq, which carries a reasoning field.
+// Shaped like an OpenAI chat completion.
 function completion(model, content) {
   return {
     id: "chatcmpl-fake",
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
     model,
-    service_tier: "on_demand",
+    service_tier: "default",
     choices: [
       {
         index: 0,
@@ -112,7 +112,6 @@ function completion(model, content) {
             content === null || typeof content === "string"
               ? content
               : JSON.stringify(content),
-          reasoning: "The user wants a change to the board.",
         },
       },
     ],

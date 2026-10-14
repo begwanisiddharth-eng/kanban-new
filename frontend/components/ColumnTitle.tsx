@@ -21,6 +21,7 @@ export function ColumnTitle({ column }: { column: Column }) {
       <Input
         aria-label="Column name"
         value={draft}
+        maxLength={60}
         autoFocus
         onFocus={(e) => e.target.select()}
         onChange={(e) => setDraft(e.target.value)}

@@ -16,30 +16,30 @@ def test_health():
 
 
 def test_needs_an_api_key(monkeypatch):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     res = client.post("/chat", json=BODY)
     assert res.status_code == 503
-    assert "GROQ_API_KEY" in res.json()["detail"]
+    assert "OPENAI_API_KEY" in res.json()["detail"]
 
 
 def test_explains_a_rejected_key(monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "wrong")
+    monkeypatch.setenv("OPENAI_API_KEY", "wrong")
 
     async def denied(**_):
-        raise litellm.AuthenticationError("bad key", llm_provider="groq", model="m")
+        raise litellm.AuthenticationError("bad key", llm_provider="openai", model="m")
 
     monkeypatch.setattr(litellm, "acompletion", denied)
     res = client.post("/chat", json=BODY)
     assert res.status_code == 503
-    assert "Groq rejected the API key" in res.json()["detail"]
+    assert "OpenAI rejected the API key" in res.json()["detail"]
 
 
 def test_explains_a_board_too_large_for_the_plan(monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "test")
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
 
     async def too_large(**_):
         raise litellm.RateLimitError(
-            "Request too large for model", llm_provider="groq", model="m"
+            "Request too large for model", llm_provider="openai", model="m"
         )
 
     monkeypatch.setattr(litellm, "acompletion", too_large)
@@ -49,23 +49,24 @@ def test_explains_a_board_too_large_for_the_plan(monkeypatch):
 
 
 def test_says_when_to_try_again_after_the_usage_limit(monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "test")
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
 
     async def daily_cap(**_):
         raise litellm.RateLimitError(
-            "Please try again in 1m50.16s.", llm_provider="groq", model="m"
+            "Please try again in 1m50.16s.", llm_provider="openai", model="m"
         )
 
     monkeypatch.setattr(litellm, "acompletion", daily_cap)
     res = client.post("/chat", json=BODY)
     assert res.status_code == 429
     assert res.json()["detail"] == (
-        "The assistant has reached its Groq usage limit. Try again in about 2 minutes."
+        "The assistant has reached its OpenAI usage limit. "
+        "Try again in about 2 minutes."
     )
 
 
 def test_returns_reply_and_camel_case_actions(monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "test")
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
     answer = {
         "reply": "Moved it.",
         "actions": [{"type": "move_card", "cardId": "c1", "columnId": "done"}],
@@ -86,10 +87,10 @@ def test_returns_reply_and_camel_case_actions(monkeypatch):
 
 
 def test_reports_failure_without_leaking_details(monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "test")
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
 
     async def broken(**_):
-        raise litellm.BadRequestError("secret detail", "m", "groq")
+        raise litellm.BadRequestError("secret detail", "m", "openai")
 
     monkeypatch.setattr(litellm, "acompletion", broken)
     res = client.post("/chat", json=BODY)
@@ -98,6 +99,8 @@ def test_reports_failure_without_leaking_details(monkeypatch):
 
 
 def test_validates_the_request():
-    bad = {**BODY, "board": {**BOARD, "columns": BOARD["columns"][:4]}}
-    assert client.post("/chat", json=bad).status_code == 422
+    sixth = {"id": "extra", "name": "Extra", "cardIds": []}
+    for columns in [[], [*BOARD["columns"], sixth]]:
+        bad = {**BODY, "board": {**BOARD, "columns": columns}}
+        assert client.post("/chat", json=bad).status_code == 422
     assert client.post("/chat", json={**BODY, "messages": []}).status_code == 422

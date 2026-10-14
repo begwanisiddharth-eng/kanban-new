@@ -1,5 +1,6 @@
 import json
 import re
+import uuid
 from typing import Any
 
 import litellm
@@ -14,24 +15,28 @@ from tenacity import (
 )
 
 from .models import (
+    MAX_COLUMNS,
+    MIN_COLUMNS,
     Action,
     AddCard,
+    AddColumn,
     AssistantReply,
     Board,
     ChatRequest,
     DeleteCard,
     MoveCard,
+    RemoveColumn,
     RenameColumn,
     UpdateCard,
 )
 
-MODEL = "groq/openai/gpt-oss-120b"
+MODEL = "openai/gpt-4o-mini"
 
 # LiteLLM prints a help banner on every failed call, retries included.
 litellm.suppress_debug_info = True
 
 SYSTEM_PROMPT = """You are the assistant inside a Kanban board app. The user's \
-current board is given below as JSON: five columns (id, name, cardCount and \
+current board is given below as JSON: its columns in order (id, name, cardCount and \
 their cards in order, each with id, title and details), and the totalCards on the \
 board. It is the board as it is now, with the changes from earlier in the \
 conversation already applied: trust it over the conversation, and use its counts \
@@ -53,13 +58,22 @@ Available actions:
   (position is the 0-based index in the target column; omit it for the end)
 {"type": "delete_card", "cardId": "..."}
 {"type": "rename_column", "columnId": "...", "name": "..."}
+{"type": "add_column", "name": "..."}
+  (adds an empty column at the end; later actions in the same reply can use its \
+name as the columnId, for example to add or move cards into it)
+{"type": "remove_column", "columnId": "..."}
+  (removes the column and deletes every card in it)
 
 Rules:
 - A card always needs a non-empty title and details. When the user does not \
 give details, write a short, useful description yourself; do not ask for one.
-- Columns cannot be added or removed. A column name is at most 60 \
-characters; if the user asks for a longer one, do not rename it, say why and \
-suggest a shorter name.
+- A board has 1 to 5 columns: never add a column to a board with 5, or \
+remove the last one; say why instead. A column name is at most 60 characters; \
+if the user asks for a longer one, do not use it, say why and suggest a \
+shorter name.
+- Removing a column deletes its cards. Only remove a column the user asked to \
+remove, and say in the reply how many cards went with it. To keep the cards, \
+move them to another column first, before removing it.
 - Only include actions the user asked for; for questions, return an empty \
 actions list. If the request is unclear, ask which card or column they mean.
 - Changes stay unsaved until the user clicks Save. You cannot save: never say \
@@ -76,23 +90,23 @@ class InvalidReply(Exception):
 
 
 class KeyRejected(Exception):
-    """Groq refused the API key."""
+    """The provider refused the API key."""
 
 
 class BoardTooLarge(Exception):
-    """The request is bigger than the Groq plan allows in a minute."""
+    """The request is bigger than the plan allows in a minute."""
 
 
 class UsageLimit(Exception):
-    """Groq's rate limit asks for a longer wait than a request can take."""
+    """A rate limit asks for a longer wait than a request can take."""
 
     def __init__(self, seconds: float):
-        super().__init__(f"Groq asks to wait {seconds:.0f} s")
+        super().__init__(f"Rate limit asks to wait {seconds:.0f} s")
         self.seconds = seconds
 
 
-# A rate limit asking for a longer wait than this fails at once; the free
-# tier's daily token cap asks for minutes.
+# A rate limit asking for a longer wait than this fails at once; daily
+# caps ask for minutes.
 MAX_RATE_LIMIT_WAIT = 30
 
 
@@ -107,7 +121,7 @@ RETRYABLE = (
 
 
 def retry_hint(error: BaseException | None) -> float:
-    """Seconds Groq asks us to wait, from "Please try again in 1m2.5s"."""
+    """Seconds a rate limit asks us to wait, from "Please try again in 1m2.5s"."""
     match = re.search(r"try again in (?:(\d+)m)?(\d+(?:\.\d+)?)(ms|s)", str(error))
     if not match:
         return 0.0
@@ -126,12 +140,7 @@ def wait_for_retry(state: RetryCallState) -> float:
 
 
 def is_retryable(error: BaseException) -> bool:
-    # Groq answers 400 json_validate_failed when the model's JSON-mode output
-    # does not parse; another attempt usually succeeds.
-    return isinstance(error, RETRYABLE) or (
-        isinstance(error, litellm.BadRequestError)
-        and "json_validate_failed" in str(error)
-    )
+    return isinstance(error, RETRYABLE)
 
 
 def parse_reply(content: str | None) -> tuple[str, list[Any]]:
@@ -188,7 +197,7 @@ async def complete(messages: list[dict[str, str]]) -> tuple[str, list[Any]]:
             raise KeyRejected(str(error)) from error
         raise
     except litellm.RateLimitError as error:
-        # Groq reports a request over the per-minute token limit as a rate
+        # A request over the per-minute token limit is reported as a rate
         # limit, but waiting never helps.
         if "request too large" in str(error).lower():
             raise BoardTooLarge(str(error)) from error
@@ -236,62 +245,90 @@ def build_messages(request: ChatRequest) -> list[dict[str, str]]:
 ACTION = TypeAdapter(Action)
 
 
-def resolve_ids(board: Board, raw: Any) -> Any:
-    """Maps a column name or a card title the model used in place of an id."""
-    if not isinstance(raw, dict):
+class Draft:
+    """The board as the actions so far leave it: column ids to names and card
+    ids, and card ids to titles."""
+
+    def __init__(self, board: Board):
+        self.columns = {c.id: (c.name, list(c.card_ids)) for c in board.columns}
+        self.cards = {card.id: card.title for card in board.cards.values()}
+
+    def resolve(self, raw: Any) -> Any:
+        """Maps a column name or a unique card title used in place of an id."""
+        if not isinstance(raw, dict):
+            return raw
+        raw = dict(raw)
+        column_id = raw.get("columnId")
+        if isinstance(column_id, str) and column_id not in self.columns:
+            for id, (name, _) in self.columns.items():
+                if name.strip().lower() == column_id.strip().lower():
+                    raw["columnId"] = id
+        card_id = raw.get("cardId")
+        if isinstance(card_id, str) and card_id not in self.cards:
+            title = card_id.strip().lower()
+            matches = [id for id, t in self.cards.items() if t.strip().lower() == title]
+            if len(matches) == 1:
+                raw["cardId"] = matches[0]
         return raw
-    raw = dict(raw)
-    columns = {c.name.strip().lower(): c.id for c in board.columns}
-    column_id = raw.get("columnId")
-    if isinstance(column_id, str) and column_id not in {c.id for c in board.columns}:
-        raw["columnId"] = columns.get(column_id.strip().lower(), column_id)
-    card_id = raw.get("cardId")
-    if isinstance(card_id, str) and card_id not in board.cards:
-        matches = [
-            c.id
-            for c in board.cards.values()
-            if c.title.strip().lower() == card_id.strip().lower()
-        ]
-        if len(matches) == 1:
-            raw["cardId"] = matches[0]
-    return raw
 
+    def unlink(self, card_id: str) -> None:
+        for _, card_ids in self.columns.values():
+            if card_id in card_ids:
+                card_ids.remove(card_id)
 
-def parse_actions(board: Board, raw_actions: list[Any]) -> list[Action]:
-    """Validates each action on its own, so one bad action does not lose the rest."""
-    actions: list[Action] = []
-    for raw in raw_actions:
-        try:
-            actions.append(ACTION.validate_python(resolve_ids(board, raw)))
-        except ValidationError:
-            pass
-    return actions
-
-
-def valid_actions(board: Board, actions: list[Action]) -> list[Action]:
-    """Keeps the actions that apply to the board, in order."""
-    columns = {column.id for column in board.columns}
-    cards = set(board.cards)
-    kept: list[Action] = []
-    for action in actions:
+    def apply(self, action: Action) -> bool:
+        """Applies the action if it fits the board; says whether it did."""
+        columns, cards = self.columns, self.cards
         match action:
-            case AddCard() | RenameColumn() if action.column_id in columns:
-                kept.append(action)
+            case AddCard() if action.column_id in columns:
+                return True
             case UpdateCard() if action.card_id in cards and (
                 action.title or action.details
             ):
-                kept.append(action)
+                cards[action.card_id] = action.title or cards[action.card_id]
+                return True
             case MoveCard() if action.card_id in cards and action.column_id in columns:
-                kept.append(action)
+                self.unlink(action.card_id)
+                columns[action.column_id][1].append(action.card_id)
+                return True
             case DeleteCard() if action.card_id in cards:
-                cards.discard(action.card_id)
-                kept.append(action)
+                self.unlink(action.card_id)
+                del cards[action.card_id]
+                return True
+            case RenameColumn() if action.column_id in columns:
+                columns[action.column_id] = (action.name, columns[action.column_id][1])
+                return True
+            case AddColumn() if len(columns) < MAX_COLUMNS:
+                action.column_id = f"col-{uuid.uuid4().hex[:8]}"
+                columns[action.column_id] = (action.name, [])
+                return True
+            case RemoveColumn() if (
+                action.column_id in columns and len(columns) > MIN_COLUMNS
+            ):
+                for card_id in columns.pop(action.column_id)[1]:
+                    del cards[card_id]
+                return True
+        return False
+
+
+def applicable_actions(board: Board, raw_actions: list[Any]) -> list[Action]:
+    """Validates each action on its own, against the board as the earlier
+    actions leave it, so one bad action does not lose the rest."""
+    draft = Draft(board)
+    kept: list[Action] = []
+    for raw in raw_actions:
+        try:
+            action = ACTION.validate_python(draft.resolve(raw))
+        except ValidationError:
+            continue
+        if draft.apply(action):
+            kept.append(action)
     return kept
 
 
 async def ask(request: ChatRequest) -> AssistantReply:
     reply, raw_actions = await complete(build_messages(request))
-    actions = valid_actions(request.board, parse_actions(request.board, raw_actions))
+    actions = applicable_actions(request.board, raw_actions)
     skipped = len(raw_actions) - len(actions)
     if skipped:
         changes = "change" if skipped == 1 else "changes"

@@ -10,11 +10,18 @@ const column = z.object({
 
 const card = z.object({ id: z.string().min(1), title: text, details: text });
 
+export const MIN_COLUMNS = 1;
+export const MAX_COLUMNS = 5;
+
 export const boardSchema = z
   .object({
-    columns: z.tuple([column, column, column, column, column]),
+    columns: z.array(column).min(MIN_COLUMNS).max(MAX_COLUMNS),
     cards: z.record(z.string(), card),
   })
+  .refine(
+    ({ columns }) => new Set(columns.map((c) => c.id)).size === columns.length,
+    "Column ids must be unique",
+  )
   .refine(({ columns, cards }) => {
     const ids = columns.flatMap((c) => c.cardIds);
     return (

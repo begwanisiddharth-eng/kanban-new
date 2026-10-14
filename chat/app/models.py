@@ -4,6 +4,10 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic.alias_generators import to_camel
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+ColumnName = Annotated[Text, StringConstraints(max_length=60)]
+
+MIN_COLUMNS = 1
+MAX_COLUMNS = 5
 
 
 class Model(BaseModel):
@@ -23,7 +27,7 @@ class Column(Model):
 
 
 class Board(Model):
-    columns: list[Column] = Field(min_length=5, max_length=5)
+    columns: list[Column] = Field(min_length=MIN_COLUMNS, max_length=MAX_COLUMNS)
     cards: dict[str, Card]
 
 
@@ -66,11 +70,29 @@ class DeleteCard(Model):
 class RenameColumn(Model):
     type: Literal["rename_column"]
     column_id: str
-    name: Annotated[Text, StringConstraints(max_length=60)]
+    name: ColumnName
+
+
+class AddColumn(Model):
+    type: Literal["add_column"]
+    name: ColumnName
+    # Assigned by the service, so later actions can refer to the new column.
+    column_id: str | None = None
+
+
+class RemoveColumn(Model):
+    type: Literal["remove_column"]
+    column_id: str
 
 
 Action = Annotated[
-    AddCard | UpdateCard | MoveCard | DeleteCard | RenameColumn,
+    AddCard
+    | UpdateCard
+    | MoveCard
+    | DeleteCard
+    | RenameColumn
+    | AddColumn
+    | RemoveColumn,
     Field(discriminator="type"),
 ]
 

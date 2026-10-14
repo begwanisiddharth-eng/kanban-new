@@ -57,4 +57,66 @@ describe("Column", () => {
     expect(items).toHaveLength(4);
     expect(items[3]).toHaveAccessibleName("Ship it");
   });
+
+  it("removes a column with cards after confirming", async () => {
+    const user = userEvent.setup();
+    const { state } = renderWithBoard();
+    await user.click(
+      await screen.findByRole("button", { name: "Remove column: Review" }),
+    );
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toHaveTextContent(
+      '"Review" and its 2 cards will be removed.',
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(state().columns).toHaveLength(5);
+
+    await user.click(
+      screen.getByRole("button", { name: "Remove column: Review" }),
+    );
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Remove column",
+      }),
+    );
+    expect(state().columns.map((c) => c.name)).not.toContain("Review");
+    expect(screen.queryByRole("region", { name: "Review" })).toBeNull();
+  });
+
+  it("removes an empty column at once and keeps the last one", async () => {
+    const user = userEvent.setup();
+    const { state } = renderWithBoard();
+    state().deleteCard("review-1");
+    state().deleteCard("review-2");
+    await user.click(
+      await screen.findByRole("button", { name: "Remove column: Review" }),
+    );
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(state().columns.map((c) => c.id)).not.toContain("review");
+
+    for (const id of ["backlog", "todo", "in-progress"])
+      state().removeColumn(id);
+    expect(
+      await screen.findByRole("button", { name: "Remove column: Done" }),
+    ).toBeDisabled();
+  });
+
+  it("adds a column from the board, up to five", async () => {
+    const user = userEvent.setup();
+    const { state } = renderWithBoard();
+    expect(screen.queryByRole("button", { name: "Add column" })).toBeNull();
+    await user.click(
+      await screen.findByRole("button", { name: "Remove column: Review" }),
+    );
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Remove column",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Add column" }));
+    await user.type(screen.getByLabelText("Column name"), "Blocked{Enter}");
+    expect(state().columns.at(-1)?.name).toBe("Blocked");
+    expect(screen.getByRole("region", { name: "Blocked" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add column" })).toBeNull();
+  });
 });

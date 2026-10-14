@@ -16,12 +16,36 @@ describe("boardSchema", () => {
     expect(boardSchema.safeParse(withCard()).success).toBe(true);
   });
 
-  it("rejects the wrong number of columns", () => {
+  it("accepts one to five columns", () => {
     const board = createEmptyBoard();
+    for (const count of [1, 3, 5]) {
+      const columns = board.columns.slice(0, count);
+      expect(boardSchema.safeParse({ ...board, columns }).success).toBe(true);
+    }
+  });
+
+  it("rejects no columns or more than five", () => {
+    const board = createEmptyBoard();
+    expect(boardSchema.safeParse({ ...board, columns: [] }).success).toBe(
+      false,
+    );
+    const sixth = { id: "extra", name: "Extra", cardIds: [] };
     expect(
-      boardSchema.safeParse({ ...board, columns: board.columns.slice(0, 4) })
+      boardSchema.safeParse({ ...board, columns: [...board.columns, sixth] })
         .success,
     ).toBe(false);
+  });
+
+  it("rejects duplicate column ids", () => {
+    const board = createEmptyBoard();
+    board.columns[1].id = board.columns[0].id;
+    expect(boardSchema.safeParse(board).success).toBe(false);
+  });
+
+  it("rejects a removed column's cards left behind", () => {
+    const board = withCard();
+    board.columns.shift();
+    expect(boardSchema.safeParse(board).success).toBe(false);
   });
 
   it("rejects blank names, titles and details", () => {

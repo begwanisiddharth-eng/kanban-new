@@ -2,8 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Runs the live specs against the real Groq API (needs GROQ_API_KEY).
-// Serial and slow on purpose: the free tier allows 8,000 tokens a minute.
+// Runs the live specs against the real OpenAI API (needs OPENAI_API_KEY).
+// Serial on purpose, to stay inside the account's rate limits.
 const PORT = 3200;
 const CHAT_PORT = 3201;
 

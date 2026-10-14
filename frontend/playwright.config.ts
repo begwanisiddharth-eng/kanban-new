@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const PORT = 3100;
 const CHAT_PORT = 3101;
-const FAKE_GROQ_PORT = 3199;
+const FAKE_OPENAI_PORT = 3199;
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -19,16 +19,16 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: "node tests/e2e/fake-groq.mjs",
-      port: FAKE_GROQ_PORT,
-      env: { FAKE_GROQ_PORT: String(FAKE_GROQ_PORT) },
+      command: "node tests/e2e/fake-openai.mjs",
+      port: FAKE_OPENAI_PORT,
+      env: { FAKE_OPENAI_PORT: String(FAKE_OPENAI_PORT) },
     },
     {
       command: `uv run --directory ../chat uvicorn app.main:app --port ${CHAT_PORT}`,
       url: `http://127.0.0.1:${CHAT_PORT}/health`,
       env: {
-        GROQ_API_KEY: "test-key",
-        GROQ_API_BASE: `http://127.0.0.1:${FAKE_GROQ_PORT}/v1`,
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: `http://127.0.0.1:${FAKE_OPENAI_PORT}/v1`,
       },
       timeout: 120_000,
     },

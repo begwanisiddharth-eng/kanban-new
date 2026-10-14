@@ -19,10 +19,10 @@ def reply(**fields) -> str:
 
 
 def rate_limit() -> litellm.RateLimitError:
-    return litellm.RateLimitError("slow down", llm_provider="groq", model="m")
+    return litellm.RateLimitError("slow down", llm_provider="openai", model="m")
 
 
-async def test_uses_the_fixed_groq_model_with_json_output(monkeypatch):
+async def test_uses_the_fixed_openai_model_with_json_output(monkeypatch):
     calls = []
 
     async def fake(**kwargs):
@@ -31,7 +31,7 @@ async def test_uses_the_fixed_groq_model_with_json_output(monkeypatch):
 
     monkeypatch.setattr(litellm, "acompletion", fake)
     await assistant.ask(REQUEST)
-    assert calls[0]["model"] == "groq/openai/gpt-oss-120b"
+    assert calls[0]["model"] == "openai/gpt-4o-mini"
     assert calls[0]["response_format"] == {"type": "json_object"}
     system, user = calls[0]["messages"]
     assert system["role"] == "system"
@@ -84,7 +84,7 @@ async def test_does_not_retry_non_transient_errors(monkeypatch):
     async def denied(**_):
         nonlocal attempts
         attempts += 1
-        raise litellm.AuthenticationError("bad key", llm_provider="groq", model="m")
+        raise litellm.AuthenticationError("bad key", llm_provider="openai", model="m")
 
     monkeypatch.setattr(litellm, "acompletion", denied)
     with pytest.raises(assistant.KeyRejected):
@@ -92,10 +92,10 @@ async def test_does_not_retry_non_transient_errors(monkeypatch):
     assert attempts == 1
 
 
-async def test_a_401_from_groq_means_the_key_was_rejected(monkeypatch):
-    # LiteLLM reports Groq's 401 as a BadRequestError carrying status 401.
+async def test_a_401_bad_request_means_the_key_was_rejected(monkeypatch):
+    # LiteLLM can report a 401 as a BadRequestError carrying status 401.
     async def denied(**_):
-        error = litellm.BadRequestError("Invalid API Key", "m", "groq")
+        error = litellm.BadRequestError("Invalid API Key", "m", "openai")
         error.status_code = 401
         raise error
 
@@ -104,30 +104,13 @@ async def test_a_401_from_groq_means_the_key_was_rejected(monkeypatch):
         await assistant.ask(REQUEST)
 
 
-async def test_retries_groq_json_validate_failed(monkeypatch):
-    attempts = 0
-
-    async def fake(**_):
-        nonlocal attempts
-        attempts += 1
-        if attempts == 1:
-            raise litellm.BadRequestError(
-                '{"error":{"code":"json_validate_failed"}}', "m", "groq"
-            )
-        return completion(reply())
-
-    monkeypatch.setattr(litellm, "acompletion", fake)
-    assert (await assistant.ask(REQUEST)).reply == "Done."
-    assert attempts == 2
-
-
 async def test_does_not_retry_other_bad_requests(monkeypatch):
     attempts = 0
 
     async def fake(**_):
         nonlocal attempts
         attempts += 1
-        raise litellm.BadRequestError("context too long", "m", "groq")
+        raise litellm.BadRequestError("context too long", "m", "openai")
 
     monkeypatch.setattr(litellm, "acompletion", fake)
     with pytest.raises(litellm.BadRequestError):
@@ -167,7 +150,7 @@ async def test_keeps_valid_actions_and_reports_the_rest(monkeypatch):
             {"type": "move_card", "cardId": "Write docs", "columnId": "to do"},
             {"type": "add_card", "columnId": "todo", "title": "No details"},
             {"type": "rename_column", "columnId": "review", "name": "x" * 61},
-            {"type": "add_column", "name": "Blocked"},
+            {"type": "archive_card", "cardId": "c2"},
             {"type": "delete_card", "cardId": "ghost"},
             "not an action",
         ]
@@ -192,31 +175,79 @@ def test_waits_grow_exponentially_up_to_twenty_seconds(monkeypatch):
         assert base <= delay <= min(base + 1, 20)
 
 
+def kept(raw_actions):
+    actions = assistant.applicable_actions(REQUEST.board, raw_actions)
+    return [a.model_dump(by_alias=True, exclude_none=True) for a in actions]
+
+
 def test_keeps_only_actions_that_fit_the_board():
-    parsed = AssistantReply.model_validate(
-        {
-            "reply": "ok",
-            "actions": [
-                {"type": "add_card", "columnId": "todo", "title": "A", "details": "B"},
-                {"type": "add_card", "columnId": "nope", "title": "A", "details": "B"},
-                {"type": "move_card", "cardId": "c1", "columnId": "done"},
-                {"type": "move_card", "cardId": "ghost", "columnId": "done"},
-                {"type": "update_card", "cardId": "c2", "title": "Fix sign-in"},
-                {"type": "update_card", "cardId": "c2"},
-                {"type": "delete_card", "cardId": "c2"},
-                {"type": "delete_card", "cardId": "c2"},
-                {"type": "rename_column", "columnId": "review", "name": "QA"},
-            ],
-        }
+    actions = kept(
+        [
+            {"type": "add_card", "columnId": "todo", "title": "A", "details": "B"},
+            {"type": "add_card", "columnId": "nope", "title": "A", "details": "B"},
+            {"type": "move_card", "cardId": "c1", "columnId": "done"},
+            {"type": "move_card", "cardId": "ghost", "columnId": "done"},
+            {"type": "update_card", "cardId": "c2", "title": "Fix sign-in"},
+            {"type": "update_card", "cardId": "c2"},
+            {"type": "delete_card", "cardId": "c2"},
+            {"type": "delete_card", "cardId": "c2"},
+            {"type": "rename_column", "columnId": "review", "name": "QA"},
+        ]
     )
-    kept = assistant.valid_actions(REQUEST.board, parsed.actions)
-    assert [a.type for a in kept] == [
+    assert [a["type"] for a in actions] == [
         "add_card",
         "move_card",
         "update_card",
         "delete_card",
         "rename_column",
     ]
+
+
+def test_removes_a_column_with_its_cards():
+    actions = kept(
+        [
+            {"type": "remove_column", "columnId": "In Progress"},
+            {"type": "move_card", "cardId": "c2", "columnId": "done"},
+            {
+                "type": "add_card",
+                "columnId": "in-progress",
+                "title": "A",
+                "details": "B",
+            },
+        ]
+    )
+    # c2 went with its column, and the column is gone for later actions.
+    assert actions == [{"type": "remove_column", "columnId": "in-progress"}]
+
+
+def test_adds_a_column_later_actions_can_use_by_name():
+    actions = kept(
+        [
+            {"type": "remove_column", "columnId": "review"},
+            {"type": "add_column", "name": "Blocked", "columnId": "made-up"},
+            {"type": "move_card", "cardId": "Fix login", "columnId": "blocked"},
+            {"type": "add_card", "columnId": "Blocked", "title": "A", "details": "B"},
+        ]
+    )
+    new_id = actions[1]["columnId"]
+    assert new_id.startswith("col-") and new_id != "made-up"
+    assert actions[2] == {"type": "move_card", "cardId": "c2", "columnId": new_id}
+    assert actions[3]["columnId"] == new_id
+
+
+def test_keeps_between_one_and_five_columns():
+    add = {"type": "add_column", "name": "Sixth"}
+    assert kept([add]) == []  # the board already has five
+    removes = [
+        {"type": "remove_column", "columnId": c}
+        for c in ["backlog", "todo", "in-progress", "review", "done"]
+    ]
+    assert len(kept(removes)) == 4  # never the last one
+    assert len(kept([removes[0], add, add])) == 2
+
+
+def test_rejects_column_names_over_sixty_characters():
+    assert kept([{"type": "add_column", "name": "x" * 61}]) == []
 
 
 def test_rejects_blank_card_fields():
@@ -255,14 +286,14 @@ def test_stops_retrying_in_time_for_the_backend():
         ("Over capacity", 0.0),
     ],
 )
-def test_reads_the_wait_groq_asks_for(message, seconds):
-    error = litellm.RateLimitError(message, llm_provider="groq", model="m")
+def test_reads_the_wait_a_rate_limit_asks_for(message, seconds):
+    error = litellm.RateLimitError(message, llm_provider="openai", model="m")
     assert assistant.retry_hint(error) == pytest.approx(seconds)
 
 
 def test_waits_at_least_as_long_as_the_rate_limit_asks():
     def state(attempt, message):
-        error = litellm.RateLimitError(message, llm_provider="groq", model="m")
+        error = litellm.RateLimitError(message, llm_provider="openai", model="m")
         return SimpleNamespace(
             attempt_number=attempt,
             outcome=SimpleNamespace(exception=lambda: error),
@@ -305,7 +336,7 @@ async def test_does_not_retry_a_request_too_large_for_the_plan(monkeypatch):
         attempts += 1
         raise litellm.RateLimitError(
             "Request too large for model on tokens per minute (TPM): Limit 8000",
-            llm_provider="groq",
+            llm_provider="openai",
             model="m",
         )
 
@@ -323,7 +354,7 @@ async def test_fails_at_once_when_the_rate_limit_asks_for_minutes(monkeypatch):
         attempts += 1
         raise litellm.RateLimitError(
             "on tokens per day (TPD): Limit 200000. Please try again in 1m50.16s.",
-            llm_provider="groq",
+            llm_provider="openai",
             model="m",
         )
 

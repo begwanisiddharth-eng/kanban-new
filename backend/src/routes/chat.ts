@@ -6,7 +6,7 @@ import { chatSchema } from "../schema";
 export const chatRouter = Router();
 
 // Statuses from the chat service that mean the same to the client: not set
-// up, board too large for the Groq plan, Groq usage limit reached.
+// up, board too large for the OpenAI plan, OpenAI usage limit reached.
 const PASSED_ON = [503, 413, 429];
 
 // The chat service bounds its own retries well inside this.

@@ -55,4 +55,41 @@ describe("applyAssistantActions", () => {
     expect(lines).toEqual([]);
     expect(selectIsDirty(store.getState())).toBe(false);
   });
+
+  it("adds and removes columns, naming the cards that went", () => {
+    const store = setup();
+    const lines = applyAssistantActions(store.getState, [
+      { type: "remove_column", columnId: "review" },
+      { type: "add_column", columnId: "col-1", name: " Blocked " },
+      { type: "move_card", cardId: "todo-1", columnId: "col-1" },
+      { type: "add_column", columnId: "col-2", name: "Too many" },
+      { type: "remove_column", columnId: "ghost" },
+    ]);
+    expect(lines).toEqual([
+      "Removed column Review and its 2 cards",
+      "Added column Blocked",
+      'Moved "Set up error monitoring" to Blocked',
+    ]);
+    const state = store.getState();
+    expect(state.columns.map((c) => c.name)).toEqual([
+      "Backlog",
+      "To Do",
+      "In Progress",
+      "Done",
+      "Blocked",
+    ]);
+    expect(state.columns[4].cardIds).toEqual(["todo-1"]);
+    expect(state.cards["review-1"]).toBeUndefined();
+  });
+
+  it("never removes the last column", () => {
+    const store = setup();
+    const ids = ["backlog", "todo", "in-progress", "review", "done"];
+    const lines = applyAssistantActions(
+      store.getState,
+      ids.map((columnId) => ({ type: "remove_column" as const, columnId })),
+    );
+    expect(lines).toHaveLength(4);
+    expect(store.getState().columns).toHaveLength(1);
+  });
 });
