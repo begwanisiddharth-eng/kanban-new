@@ -31,8 +31,11 @@ MODEL = "groq/openai/gpt-oss-120b"
 litellm.suppress_debug_info = True
 
 SYSTEM_PROMPT = """You are the assistant inside a Kanban board app. The user's \
-current board is given below as JSON: five columns (id, name, cardIds in order) \
-and cards (id, title, details).
+current board is given below as JSON: five columns (id, name, cardCount and \
+their cards in order, each with id, title and details), and the totalCards on the \
+board. It is the board as it is now, with the changes from earlier in the \
+conversation already applied: trust it over the conversation, and use its counts \
+rather than counting cards mentioned in earlier messages.
 
 Answer questions about the board and make changes when the user asks for them. \
 Be concise and friendly. Never invent card or column ids; use the ids in the board \
@@ -76,6 +79,23 @@ class KeyRejected(Exception):
     """Groq refused the API key."""
 
 
+class BoardTooLarge(Exception):
+    """The request is bigger than the Groq plan allows in a minute."""
+
+
+class UsageLimit(Exception):
+    """Groq's rate limit asks for a longer wait than a request can take."""
+
+    def __init__(self, seconds: float):
+        super().__init__(f"Groq asks to wait {seconds:.0f} s")
+        self.seconds = seconds
+
+
+# A rate limit asking for a longer wait than this fails at once; the free
+# tier's daily token cap asks for minutes.
+MAX_RATE_LIMIT_WAIT = 30
+
+
 RETRYABLE = (
     litellm.RateLimitError,
     litellm.APIConnectionError,
@@ -102,7 +122,7 @@ backoff = wait_exponential_jitter(initial=1, max=20)
 def wait_for_retry(state: RetryCallState) -> float:
     """Exponential backoff, but at least as long as a rate limit asks for."""
     error = state.outcome.exception() if state.outcome else None
-    return min(max(backoff(state), retry_hint(error) + 0.5), 30)
+    return min(max(backoff(state), retry_hint(error) + 0.5), MAX_RATE_LIMIT_WAIT)
 
 
 def is_retryable(error: BaseException) -> bool:
@@ -167,11 +187,46 @@ async def complete(messages: list[dict[str, str]]) -> tuple[str, list[Any]]:
         if getattr(error, "status_code", None) == 401:
             raise KeyRejected(str(error)) from error
         raise
+    except litellm.RateLimitError as error:
+        # Groq reports a request over the per-minute token limit as a rate
+        # limit, but waiting never helps.
+        if "request too large" in str(error).lower():
+            raise BoardTooLarge(str(error)) from error
+        if (wait := retry_hint(error)) > MAX_RATE_LIMIT_WAIT:
+            raise UsageLimit(wait) from error
+        raise
     return parse_reply(response.choices[0].message.content)
 
 
+def board_for_prompt(board: Board) -> str:
+    """The board with cards nested in their columns, so each id appears once,
+    and the counts the model would otherwise get wrong."""
+    columns = [
+        {
+            "id": column.id,
+            "name": column.name,
+            "cards": [
+                card.model_dump()
+                for card_id in column.card_ids
+                if (card := board.cards.get(card_id))
+            ],
+        }
+        for column in board.columns
+    ]
+    return json.dumps(
+        {
+            "columns": [
+                {**column, "cardCount": len(column["cards"])} for column in columns
+            ],
+            "totalCards": sum(len(column["cards"]) for column in columns),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
 def build_messages(request: ChatRequest) -> list[dict[str, str]]:
-    board = request.board.model_dump_json(by_alias=True)
+    board = board_for_prompt(request.board)
     return [
         {"role": "system", "content": SYSTEM_PROMPT + board},
         *({"role": m.role, "content": m.content} for m in request.messages),

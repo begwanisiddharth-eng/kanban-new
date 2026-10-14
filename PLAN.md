@@ -115,7 +115,7 @@ Decisions: the assistant is a separate Python service in `chat/` (FastAPI, LiteL
 - [x] Unit tests for assistant actions, the chat panel, the password dialog and idle timeout (47 tests)
 - [x] Playwright against a fake Groq server: questions, moves, adds, retries after 503s, per-board conversations, layout and fixed card height, change password, single sign-in, idle warning and timeout (63 tests)
 - [x] Root scripts run all three services; AGENTS.md, CLAUDE.md and README.md updated
-- [ ] Live call to Groq: api.groq.com is now reachable, but GROQ_API_KEY is not yet set in the environment
+- [x] Live calls to Groq (see "Live model testing" below)
 
 ## Simulated model testing (5 rounds)
 
@@ -127,3 +127,13 @@ The fake Groq server can now script exact responses per message and report the r
 - [x] Round 4, panel UI (`assistant-ui.spec.ts`): the scrolling conversation was not keyboard-focusable (axe); fixed
 - [x] Round 5, stress (`assistant-stress.spec.ts`): concurrent users, truncated JSON, duplicate titles, a 300-card board; backend now answers 504 on a timeout and copes with a non-JSON error, and the service's retries fit inside the backend's timeout
 - [x] Totals: backend 32, frontend 51, chat 28, Playwright 105; the full Playwright suite passed twice over with `--repeat-each=2` (210 runs, no flakes)
+
+## Live model testing (3 rounds against Groq)
+
+Direct `ask()` calls, the built app through its API as a signed-in user, and a live Playwright suite (`npm run test:live`). The model always returned valid JSON with valid ids; typical answers take 0.5-1.5 s.
+
+- [x] Round 1: "Add a card..." (a panel suggestion) asked for details instead of adding; replies used Markdown shown as literal asterisks; 429s from the 8,000 tokens/minute limit were retried too early. Fixed in the prompt, a server-side Markdown strip and retry waits that follow Groq's "try again in Xs". Live suite 7/8, then 10/10
+- [x] Round 2: adds 3/3, plain text, Save reminders; 10 users at once all answered (1.2-33 s); prompt injection in a card refused. Fixed: a claimed rename the 60-character limit then dropped, and internal ids in replies
+- [x] Round 3: all 24 earlier prompts correct. Fixed: a 213-card board was retried for 18 s then "try again" (now an immediate "too large" message, and a 12% smaller prompt); wrong card counts in long conversations (counts now sent with the board: 14/16 right, was about 2 in 3); the daily 200,000-token cap waited about 100 s then said "try again" (now 0.6 s and "try again in about N minutes")
+- [ ] Counting in long conversations is still wrong about 1 time in 8; sending the board after the history instead was not measured because the daily cap ran out
+- [ ] Live suite not re-run after the round 3 changes (daily cap); run `npm run test:live` once the quota resets

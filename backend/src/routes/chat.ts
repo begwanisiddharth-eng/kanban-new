@@ -5,6 +5,10 @@ import { chatSchema } from "../schema";
 
 export const chatRouter = Router();
 
+// Statuses from the chat service that mean the same to the client: not set
+// up, board too large for the Groq plan, Groq usage limit reached.
+const PASSED_ON = [503, 413, 429];
+
 // The chat service bounds its own retries well inside this.
 const CHAT_TIMEOUT_MS = 180_000;
 
@@ -37,7 +41,7 @@ chatRouter.post("/", requireUser, async (req, res) => {
   const data = (await reply.json().catch(() => ({}))) as { detail?: unknown };
   if (reply.ok) res.json(data);
   else
-    res.status(reply.status === 503 ? 503 : 502).json({
+    res.status(PASSED_ON.includes(reply.status) ? reply.status : 502).json({
       error:
         typeof data.detail === "string"
           ? data.detail

@@ -255,6 +255,17 @@ describe("chat", () => {
     expect(res.body.error).toBe("Add GROQ_API_KEY.");
   });
 
+  it("passes on the usage limit and board size statuses", async () => {
+    const { agent } = await signUp();
+    for (const status of [413, 429]) {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        Response.json({ detail: `Status ${status}.` }, { status }),
+      );
+      const res = await agent.post("/api/chat").send(body()).expect(status);
+      expect(res.body.error).toBe(`Status ${status}.`);
+    }
+  });
+
   it("reports when the chat service is not running", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("refused"));
     const { agent } = await signUp();

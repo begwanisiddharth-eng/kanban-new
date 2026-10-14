@@ -15,7 +15,7 @@ const calls = new Map();
 function answer(messages) {
   const board = JSON.parse(messages[0].content.split("Board:\n")[1]);
   const text = messages.at(-1).content;
-  const cards = Object.values(board.cards);
+  const cards = board.columns.flatMap((c) => c.cards);
   const column = (name) =>
     board.columns.find((c) => c.name.toLowerCase() === name.toLowerCase());
 

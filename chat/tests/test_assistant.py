@@ -34,7 +34,8 @@ async def test_uses_the_fixed_groq_model_with_json_output(monkeypatch):
     assert calls[0]["model"] == "groq/openai/gpt-oss-120b"
     assert calls[0]["response_format"] == {"type": "json_object"}
     system, user = calls[0]["messages"]
-    assert system["role"] == "system" and '"cardIds":["c1"]' in system["content"]
+    assert system["role"] == "system"
+    assert '"cards":[{"id":"c1","title":"Write docs"' in system["content"]
     assert user == {"role": "user", "content": "Hi"}
 
 
@@ -277,3 +278,57 @@ def test_strips_markdown_from_replies():
         {"reply": "## Summary\nIn **In Progress**: __two__ cards.", "actions": []}
     )
     assert assistant.parse_reply(content)[0] == "Summary\nIn In Progress: two cards."
+
+
+def test_sends_cards_nested_in_their_columns_in_order():
+    board = json.loads(assistant.board_for_prompt(REQUEST.board))
+    assert [c["id"] for c in board["columns"]] == [
+        "backlog",
+        "todo",
+        "in-progress",
+        "review",
+        "done",
+    ]
+    assert board["columns"][0]["cards"] == [
+        {"id": "c1", "title": "Write docs", "details": "User guide"}
+    ]
+    assert board["columns"][2]["cards"][0]["id"] == "c2"
+    assert [c["cardCount"] for c in board["columns"]] == [1, 0, 1, 0, 0]
+    assert board["totalCards"] == 2
+
+
+async def test_does_not_retry_a_request_too_large_for_the_plan(monkeypatch):
+    attempts = 0
+
+    async def too_large(**_):
+        nonlocal attempts
+        attempts += 1
+        raise litellm.RateLimitError(
+            "Request too large for model on tokens per minute (TPM): Limit 8000",
+            llm_provider="groq",
+            model="m",
+        )
+
+    monkeypatch.setattr(litellm, "acompletion", too_large)
+    with pytest.raises(assistant.BoardTooLarge):
+        await assistant.ask(REQUEST)
+    assert attempts == 1
+
+
+async def test_fails_at_once_when_the_rate_limit_asks_for_minutes(monkeypatch):
+    attempts = 0
+
+    async def daily_cap(**_):
+        nonlocal attempts
+        attempts += 1
+        raise litellm.RateLimitError(
+            "on tokens per day (TPD): Limit 200000. Please try again in 1m50.16s.",
+            llm_provider="groq",
+            model="m",
+        )
+
+    monkeypatch.setattr(litellm, "acompletion", daily_cap)
+    with pytest.raises(assistant.UsageLimit) as raised:
+        await assistant.ask(REQUEST)
+    assert raised.value.seconds == pytest.approx(110.16)
+    assert attempts == 1

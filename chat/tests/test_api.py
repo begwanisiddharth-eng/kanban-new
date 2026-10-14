@@ -34,6 +34,36 @@ def test_explains_a_rejected_key(monkeypatch):
     assert "Groq rejected the API key" in res.json()["detail"]
 
 
+def test_explains_a_board_too_large_for_the_plan(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test")
+
+    async def too_large(**_):
+        raise litellm.RateLimitError(
+            "Request too large for model", llm_provider="groq", model="m"
+        )
+
+    monkeypatch.setattr(litellm, "acompletion", too_large)
+    res = client.post("/chat", json=BODY)
+    assert res.status_code == 413
+    assert "too large" in res.json()["detail"]
+
+
+def test_says_when_to_try_again_after_the_usage_limit(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test")
+
+    async def daily_cap(**_):
+        raise litellm.RateLimitError(
+            "Please try again in 1m50.16s.", llm_provider="groq", model="m"
+        )
+
+    monkeypatch.setattr(litellm, "acompletion", daily_cap)
+    res = client.post("/chat", json=BODY)
+    assert res.status_code == 429
+    assert res.json()["detail"] == (
+        "The assistant has reached its Groq usage limit. Try again in about 2 minutes."
+    )
+
+
 def test_returns_reply_and_camel_case_actions(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "test")
     answer = {
